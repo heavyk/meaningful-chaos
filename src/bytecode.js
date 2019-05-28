@@ -2,8 +2,8 @@
 function run (px, out, seq) {
   var x = 0, y = 0
   var d = 0
-  const height = input.length
-  const width = input[0].length
+  const height = px.length
+  const width = px[0].length
   const nd = output.length
 
   for (var i = 0; i < seq.length; i += 2) {

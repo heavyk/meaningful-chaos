@@ -50,7 +50,7 @@ plugger(function random_events (stuff) {
       // random_img_test(video_canvas, 0.1) // generate an image with Math.random()
       // exaggerate_pixels(video_canvas, canvas, 50)
       // strongest_pixels(video_canvas, canvas, 50)
-      summarise_pixels(video_canvas, canvas, 1)
+      summarise_pixels(video_canvas, canvas, 2)
       summarise_densities(canvas, summary_canvas)
       if (show_fps) {
         var elapsed = (performance.now() - start_time) / 1000
@@ -150,25 +150,35 @@ function strongest_pixels (src_canvas, dest_canvas, magnitude = 4) {
 }
 
 
-function summarise_pixels (src_canvas, dest_canvas) {
+function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
 	const width = dest_canvas.width
 	const height = dest_canvas.height
 	const dd = new Uint8ClampedArray(width * height * 4)
   var vd = src_canvas.getContext('2d').getImageData(0, 0, width, height).data
-  var densities = empty_array(256), max_density = 0
+  var densities = empty_array(256)
+  var px = empty_array(width).map(() => empty_array(height))
+  var max_density = 0
 
-  for (var v, i = 0; i < vd.length; i += 4) {
-    v = Math.min(
-          Math.min(vd[i+0], 255) +
-          Math.min(vd[i+1], 255) +
-          Math.min(vd[i+2], 255)
+  for (var val, density, x = 0, y = 0, i = 0; i < vd.length; i += 4) {
+    // calculate the value of the pixel
+    val = Math.min(
+          Math.min(vd[i+0] * exaggeration, 255) +
+          Math.min(vd[i+1] * exaggeration, 255) +
+          Math.min(vd[i+2] * exaggeration, 255)
         , 255)
 
-    dd[i+0] = dd[i+1] = dd[i+2] = v
+    // visually paint all of them greyscale
+    dd[i+0] = dd[i+1] = dd[i+2] = px[x][y] = val
     dd[i+3] = 255
 
-    densities[v]++
-    if (v > 0 && densities[v] > max_density) max_density = densities[v]
+    density = ++densities[val]
+    if (val > 0 && density > max_density) max_density = density
+
+    // calculate the *next* x/y coord
+    if (++x >= width) {
+      x = 0
+      y++
+    }
   }
 
   dest_canvas.densities = densities
@@ -181,18 +191,23 @@ function summarise_densities (src_canvas, dest_canvas) {
   const width = 256
 	const height = src_canvas.max_density
   if (height > 0) {
+    if (height > 1024) {
+      // @Incomplete: account for cases where the height is really big. add a divider
+    }
+
     const densities = src_canvas.densities
   	const dd = new Uint8ClampedArray(width * height * 4)
 
-    // TODO: don't resize unless it's actually bigger (height)
+    // @Incomplete: don't resize every frame.
+    //              only resize if it's actually bigger
     dest_canvas.height = height + margin + margin
     dest_canvas.width = width + margin + margin
 
-    for (var x = 1; x <= width; x++) {
-      var d = densities[x]
-      for (var y = 1; y <= d; y++) {
-  			var i = (x * 4) + (y * width * 4)
-
+    var x, y, d, i
+    for (x = 1; x <= width; x++) {
+      d = densities[x]
+      for (y = 1; y <= d; y++) {
+  			i = (x * 4) + (y * width * 4)
   			dd[i+0] = 255
   			dd[i+1] = 0
   			dd[i+2] = 0
@@ -201,8 +216,6 @@ function summarise_densities (src_canvas, dest_canvas) {
   	}
 
   	dest_canvas.getContext('2d').putImageData(new ImageData(dd, width), margin, margin)
-  } else {
-    console.log('no density data')
   }
 
 }

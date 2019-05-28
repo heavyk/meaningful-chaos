@@ -1,7 +1,7 @@
 // import plugger from 'lib/plugins/plugger'
-import plugger from 'lib/plugins/plugger'
+import plugger from '@lib/plugins/plugger'
 
-import { empty_array } from 'lib/utils'
+import { empty_array } from '@lib/utils'
 
 const raf = requestAnimationFrame
 

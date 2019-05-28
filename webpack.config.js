@@ -14,12 +14,26 @@ module.exports = {
   resolve: {
     alias: {
       '@': src_path,
-      'src': src_path,
-      'lib': lib_path,
+      '@src': src_path,
+      '@lib': lib_path,
     }
   },
   module: {
     rules: [
+      // rollup slows things down a little bit.
+      // also, the webpack es6 code loader makes really big bundles
+      // I don't really want to think about it right now, so it's commented out
+      // {
+      //   test: new RegExp(Path.relative(__dirname, src_path) + '/index\.js$'),
+      //   use: [{
+      //     loader: 'webpack-rollup-loader',
+      //     options: {
+      //       // OPTIONAL: any rollup options (except `entry`)
+      //       // e.g.
+      //       external: [/* modules that shouldn't be rollup'd */]
+      //     },
+      //   }]
+      // },
       {
         test: /\.(vert|frag)$/,
         loader: 'raw-loader',

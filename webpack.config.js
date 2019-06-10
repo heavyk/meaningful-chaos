@@ -9,14 +9,34 @@ const lib_path = Path.join(require('os').homedir(), 'phoenix', 'affinaties-stagi
 module.exports = {
   mode,
   entry: [
-    Path.join(src_path, 'index.js')
+    Path.join(src_path, 'index.js'),
   ],
   resolve: {
     alias: {
       '@': src_path,
       '@src': src_path,
       '@lib': lib_path,
-    }
+    },
+  },
+  devServer: {
+    // contentBase: './dist',
+    hot: true,
+    historyApiFallback: true,
+    // It suppress error shown in console, so it has to be set to false.
+    quiet: false,
+    // It suppress everything except error, so it has to be set to false as well
+    // to see success build.
+    noInfo: false,
+    stats: {
+        // Config for minimal console.log mess.
+        assets: false,
+        colors: true,
+        version: false,
+        hash: false,
+        timings: false,
+        chunks: false,
+        chunkModules: false
+    },
   },
   module: {
     rules: [
@@ -38,8 +58,8 @@ module.exports = {
         test: /\.(vert|frag)$/,
         loader: 'raw-loader',
         include: src_path,
-      }
-    ]
+      },
+    ],
   },
   plugins: [
     new webpack.DefinePlugin({
@@ -53,6 +73,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: Path.join(src_path, 'index.ejs'),
       title: 'meaningful chaos',
-    })
-  ]
+    }),
+    new webpack.HotModuleReplacementPlugin(),
+  ],
 }

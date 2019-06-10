@@ -54,7 +54,7 @@ plugger(function meaningful_chaos (hh) {
       summarise_pixels(video_canvas, canvas, 2)
       summarise_densities(canvas, summary_canvas)
 
-      canvas.pt = run_sequence(canvas, )
+      // canvas.pt = run_sequence(canvas, )
 
       if (show_fps) {
         var elapsed = (performance.now() - start_time) / 1000
@@ -152,7 +152,7 @@ function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
         , 255)
 
     // visually paint all of them greyscale
-    dd[i+0] = dd[i+1] = dd[i+2] = px[x][y] = val
+    dd[i+0] = dd[i+1] = dd[i+2] = grid[x][y] = val
     dd[i+3] = 255
 
     density = ++densities[val]

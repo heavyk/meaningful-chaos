@@ -1,13 +1,14 @@
 // import plugger from 'lib/plugins/plugger'
 import plugger from '@lib/plugins/plugger'
-
 import { empty_array } from '@lib/utils'
+
+import { put_cam_in_video_element, capture_video } from './camera'
 
 const raf = requestAnimationFrame
 
-plugger(function random_events (stuff) {
-  const {G, h, c, t, v} = stuff
-  const screen_size = G.resize()
+plugger(function meaningful_chaos (hh) {
+  const {G, h, c, t, v} = hh
+  // const screen_size = G.resize()
 
   // main drawing canvas (the one the webcam is streamed into)
   var canvas = h('canvas')
@@ -39,22 +40,26 @@ plugger(function random_events (stuff) {
     if (frameRate && !fps) fps = frameRate
     max_diff = 1000 / fps
     start_time = performance.now()
-    raf(draw_canvas)
+    raf(update)
   })
 
-  function draw_canvas (now) {
+  function update (now) {
     var diff = now - last_frame
     if (diff >= max_diff) {
       frames++
-      capture_img(video, video_canvas)
+      capture_video(video, video_canvas)
       // random_img_test(video_canvas, 0.1) // generate an image with Math.random()
       // exaggerate_pixels(video_canvas, canvas, 50)
       // strongest_pixels(video_canvas, canvas, 50)
       summarise_pixels(video_canvas, canvas, 2)
       summarise_densities(canvas, summary_canvas)
+
+      canvas.pt = run_sequence(canvas, )
+
       if (show_fps) {
         var elapsed = (performance.now() - start_time) / 1000
         if (elapsed > 5) {
+          // @Incomplete: when making an interface, put this there instead of the console
           console.log(frames+' in '+ elapsed.toPrecision(2) + 's :: '+(frames / elapsed).toPrecision(3) + ' fps / '+fps)
           start_time = now
           frames = 0
@@ -64,7 +69,7 @@ plugger(function random_events (stuff) {
       last_frame = now
     }
 
-    raf(draw_canvas)
+    raf(update)
   }
 
   return [
@@ -73,27 +78,6 @@ plugger(function random_events (stuff) {
     summary_canvas,
   ]
 })
-
-function put_cam_in_video_element (video, cb) {
-	navigator.mediaDevices.getUserMedia({
-		audio: false,
-		video: {
-			facingMode: 'user',
-			width: { min: 128, ideal: 512*3 },
-			height: { min: 128, ideal: 512*3 }
-		}
-	}).then((stream) => {
-		video.srcObject = stream
-		cb && cb(stream)
-	})
-}
-
-function capture_img (video, canvas) {
-  var width = video.width
-  var height = video.height
-  canvas.getContext('2d').drawImage(video, 0, 0, width, height)
-  return canvas
-}
 
 
 function random_img_test (dest_canvas, magnitude = 0.1) {
@@ -156,7 +140,7 @@ function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
 	const dd = new Uint8ClampedArray(width * height * 4)
   var vd = src_canvas.getContext('2d').getImageData(0, 0, width, height).data
   var densities = empty_array(256)
-  var px = empty_array(width).map(() => empty_array(height))
+  var grid = empty_array(width).map(() => empty_array(height))
   var max_density = 0
 
   for (var val, density, x = 0, y = 0, i = 0; i < vd.length; i += 4) {
@@ -181,6 +165,7 @@ function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
     }
   }
 
+  dest_canvas.grid = grid
   dest_canvas.densities = densities
   dest_canvas.max_density = max_density
 	dest_canvas.getContext('2d').putImageData(new ImageData(dd, width), 0, 0)
@@ -217,5 +202,4 @@ function summarise_densities (src_canvas, dest_canvas) {
 
   	dest_canvas.getContext('2d').putImageData(new ImageData(dd, width), margin, margin)
   }
-
 }

@@ -1,10 +1,18 @@
 
-function run (px, out, seq) {
+import { empty_array } from '@lib/utils'
+
+class Step {
+  constructor () {
+
+  }
+}
+
+// run a sequence on a canvas to output a point
+function run_sequence (canvas, seq, nd = 10) {
   var x = 0, y = 0
   var d = 0
-  const height = px.length
-  const width = px[0].length
-  const nd = output.length
+  const { grid, width, height } = convas
+  const pt = empty_array(nd)
 
   for (var i = 0; i < seq.length; i += 2) {
     var o = seq[i]
@@ -24,7 +32,7 @@ function run (px, out, seq) {
         if (--y < 0) y = 0
       break
 
-      // move output pointer
+      // move output point dimension pointer
       case '{':
         if (--d < 0) d = 0
       break
@@ -36,27 +44,27 @@ function run (px, out, seq) {
 
       // unary operations
       case '++':
-        output[d]++
+        pt[d]++
       break
       case '--':
-        output[d]--
+        pt[d]--
       break
 
       //
       case '+=':
-        output[d] += input[x][y]
+        pt[d] += input[x][y]
       break
       case '-=':
-        output[d] -= input[x][y]
+        pt[d] -= input[x][y]
       break
       case '*=':
-        output[d] *= input[x][y]
+        pt[d] *= input[x][y]
       break
       case '/=':
-        output[d] /= input[x][y]
+        pt[d] /= input[x][y]
       break
       case '%=':
-        output[d] %= input[x][y]
+        pt[d] %= input[x][y]
       break
 
       // conditionals
@@ -65,4 +73,6 @@ function run (px, out, seq) {
       break
     }
   }
+
+  return pt
 }

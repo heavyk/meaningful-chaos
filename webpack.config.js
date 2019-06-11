@@ -28,14 +28,14 @@ module.exports = {
     // to see success build.
     noInfo: false,
     stats: {
-        // Config for minimal console.log mess.
-        assets: false,
-        colors: true,
-        version: false,
-        hash: false,
-        timings: false,
-        chunks: false,
-        chunkModules: false
+      // Config for minimal console.log mess.
+      assets: false,
+      colors: true,
+      version: false,
+      hash: false,
+      timings: false,
+      chunks: false,
+      chunkModules: false,
     },
   },
   module: {
@@ -64,7 +64,7 @@ module.exports = {
   plugins: [
     new webpack.DefinePlugin({
       'process.env': {
-        NODE_ENV: JSON.stringify(mode)
+        NODE_ENV: JSON.stringify(mode),
       },
       __PRODUCTION__: JSON.stringify(mode === 'production'),
       DEBUG: JSON.stringify(mode !== 'production'),

@@ -1,24 +1,26 @@
 // Modules to control application life and create native browser window
-const {app, BrowserWindow} = require('electron')
-const path = require('path')
+const { app, BrowserWindow } = require('electron')
+const Path = require('path')
 
-const DEFAULT_PORT = 1166
+var listen_port = 1166
+var listen_ip = '127.0.0.1' // '0.0.0.0'
 const config = {
   outputFilename: '/bundle.js',
 }
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
-let mainWindow
+var mainWindow
+var contents
 
 // function start_dev_server () {
 //   const createConfig = require('webpack-dev-server/lib/utils/createConfig')
 //   const createLogger = require('webpack-dev-server/lib/utils/createLogger')
-//   const options = createConfig(config, process.argv, { port: DEFAULT_PORT })
+//   const options = createConfig(config, process.argv, { port: listen_port })
 //   startDevServer(config, options)
 // }
 
-function makeServer(_config) {
+function start_server () {
   const config = require('./webpack.config')
   const webpack = require('webpack')
   const WebpackDevServer = require('webpack-dev-server')
@@ -28,46 +30,38 @@ function makeServer(_config) {
     const compiler = webpack(config)
     const server = new WebpackDevServer(compiler, config.devServer)
 
-    compiler.hooks.done.tap('IDoNotUnderstandWhatThisStringIsForButItCannotBeEmpty', () => {
-      // console.log('Done compiling')
+    compiler.hooks.done.tap('AfterCompileAndListen', () => {
       if (++i === 2) resolve(server)
     })
 
-    server.listen(DEFAULT_PORT, '0.0.0.0', err => {
+    server.listen(listen_port, listen_ip, err => {
       if (err) reject(err)
-
-      // console.log('listening')
       if (++i === 2) resolve(server)
     })
   })
 }
 
 function createWindow () {
-  // Create the browser window.
   mainWindow = new BrowserWindow({
     width: 1920,
     height: 1100,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
-    }
+      preload: Path.join(__dirname, 'preload.js'),
+    },
   })
 
+  contents = mainWindow.webContents
   mainWindow.loadFile('splash.html')
+  contents.openDevTools()
 
-  // iniitialise webkit-dev-server
-  makeServer().then(() => {
-    // and load the index.html of the app.
-    mainWindow.loadURL('http://localhost:'+DEFAULT_PORT+'/')
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools()
+  start_server().then(() => {
+    mainWindow.loadURL('http://localhost:' + listen_port + '/')
+    // contents.openDevTools()
   })
 
-  // Emitted when the window is closed.
-  mainWindow.on('closed', function () {
-    // Dereference the window object, usually you would store windows
-    // in an array if your app supports multi windows, this is the time
-    // when you should delete the corresponding element.
+  mainWindow.on('closed', () => {
     mainWindow = null
+    contents = null
   })
 }
 
@@ -77,17 +71,50 @@ function createWindow () {
 app.on('ready', createWindow)
 
 // Quit when all windows are closed.
-app.on('window-all-closed', function () {
+app.on('window-all-closed', () => {
   // On macOS it is common for applications and their menu bar
   // to stay active until the user quits explicitly with Cmd + Q
-  if (process.platform !== 'darwin') app.quit()
+
+  // for now, we're just going to quit, however, later I will want
+  // the action-logger to continue to run in the background
+  if (process.platform !== 'darwin' || true) app.quit()
 })
 
-app.on('activate', function () {
-  // On macOS it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
+app.on('activate', () => {
+  // for macOS re-create the window when the dock icon is clicked
   if (mainWindow === null) createWindow()
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+// function key_code (key) {
+//   // TODO
+//   return {
+//     enter, backspace, delete, tab, escape, control, alt, shift, end, home, insert, left, up, right, down, pageUp, pageDown, printScreen
+//   }
+// }
+
+var kbd = {
+  shift: false,
+  control: false,
+  alt: false,
+  meta: false,
+  rightButtonDown: false,
+  leftButtonDown: false,
+  middleButtonDown: false,
+}
+var mouse = {
+  x: 0,
+  y: 0,
+  modifiers: [],
+}
+function mouse_event ({ x, y }) {
+  var event = {
+    x: (mouse.x += x),
+    y: (mouse.y += y),
+    modifers: mouse.modifers,
+
+  }
+  contents.sendInputEvent('mousemove', { x: mouse.x + x, y })
+}
+
+// here, we send key events to the page
+// contents.sendInputEvent('keyup', {keyCode: 'k'})

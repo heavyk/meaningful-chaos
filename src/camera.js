@@ -1,16 +1,16 @@
 
 export function put_cam_in_video_element (video, cb) {
-	navigator.mediaDevices.getUserMedia({
-		audio: false,
-		video: {
-			facingMode: 'user',
-			width: { min: 128, ideal: 512*3 },
-			height: { min: 128, ideal: 512*3 }
-		}
-	}).then((stream) => {
-		video.srcObject = stream
-		cb && cb(stream)
-	})
+  navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      facingMode: 'user',
+      width: { min: 128, ideal: 512 * 3 },
+      height: { min: 128, ideal: 512 * 3 },
+    },
+  }).then((stream) => {
+    video.srcObject = stream
+    cb && cb(stream)
+  })
 }
 
 export function capture_video (video, canvas) {

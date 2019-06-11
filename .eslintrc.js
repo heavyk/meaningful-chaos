@@ -1,13 +1,15 @@
-const path = require('path');
+const Path = require('path')
+
 module.exports = {
   root: true,
   env: {
     browser: true,
   },
   extends: [
-    'airbnb-base',
+    'standard',
   ],
   plugins: [
+    'snakecasejs',
     'import',
   ],
   globals: {
@@ -17,12 +19,17 @@ module.exports = {
     'import/resolver': {
       alias: {
         map: [
-          ['@', path.resolve(__dirname, 'src')],
+          ['@', Path.resolve(__dirname, 'src')],
         ],
       },
     },
   },
   rules: {
+    'camelcase': 0,
+    // 'camelcase': ['warn', {
+    //   properties: 'never',
+    //   ignoreDestructuring: true,
+    // }],
     'comma-dangle': ['error', {
       arrays: 'always-multiline',
       objects: 'always-multiline',
@@ -36,5 +43,8 @@ module.exports = {
     'no-param-reassign': 0,
     'no-shadow': 0,
     'no-underscore-dangle': 0,
+    'no-constant-condition': 1,
+    // 'snakecasejs/snakecasejs': 'warn',
+    // 'snakecasejs/whitelist': [],
   },
-};
+}

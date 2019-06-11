@@ -9,7 +9,7 @@ const lib_path = Path.join(require('os').homedir(), 'phoenix', 'affinaties-stagi
 module.exports = {
   mode,
   entry: [
-    Path.join(src_path, 'index.js'),
+    Path.join(src_path, 'meaningful-chaos.js'),
   ],
   resolve: {
     alias: {

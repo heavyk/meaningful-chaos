@@ -1,3 +1,6 @@
+// disable warnings
+process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = true
+
 // Modules to control application life and create native browser window
 const { app, BrowserWindow, ipcMain: ipc } = require('electron')
 const Path = require('path')
@@ -12,9 +15,9 @@ const redis = require('./redis-db')
 var main_window
 var contents
 
-// ipc.on('key', event => {
-//   console.log('key', event)
-// })
+ipc.on('key', event => {
+  console.log('key', event)
+})
 
 function start_server () {
   const config = require('./webpack.config')
@@ -44,11 +47,14 @@ function createWindow () {
     height: 1100,
     webPreferences: {
       preload: __dirname + '/preload.js',
+      // allowRunningInsecureContent: true,
+      // contextIsolation: true,
     },
   })
 
   contents = main_window.webContents
   main_window.loadFile('splash.html')
+  // contents.session.clearCache(() => { console.log('cleared')})
   contents.openDevTools()
 
   start_server().then(() => {

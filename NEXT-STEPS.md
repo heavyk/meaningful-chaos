@@ -22,3 +22,7 @@
 
 ### optimisation
 - it may be beneficial to pass the grid to C++, and then in parallel, run the bytecode sequences, then match any positions to concepts, and emit those.
+  - an effective way to do this may be with a redis module: once redis receives the grid, it can immediately run all the sequences stored, then calculate the positions
+- another option is to do any processing that can be done in assemblyscript (asc)
+  - https://assemblyscript.github.io/assemblyscript/examples/game-of-life/
+  - https://docs.assemblyscript.org/quick-start

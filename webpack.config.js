@@ -39,9 +39,10 @@ module.exports = {
       chunkModules: false,
     },
   },
-  // externals: {
-  //   electron: 'electron'
-  // },
+  externals: {
+    // defined in preload.js and used for ipc
+    electron: 'electron'
+  },
   module: {
     rules: [
       // rollup slows things down a little bit.

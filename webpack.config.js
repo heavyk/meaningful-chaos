@@ -8,6 +8,7 @@ const lib_path = Path.join(require('os').homedir(), 'phoenix', 'affinaties-stagi
 
 module.exports = {
   mode,
+  target: 'electron-renderer',
   entry: [
     Path.join(src_path, 'meaningful-chaos.js'),
   ],
@@ -20,7 +21,7 @@ module.exports = {
   },
   devServer: {
     // contentBase: './dist',
-    hot: true,
+    // hot: true,
     historyApiFallback: true,
     // It suppress error shown in console, so it has to be set to false.
     quiet: false,
@@ -38,6 +39,9 @@ module.exports = {
       chunkModules: false,
     },
   },
+  // externals: {
+  //   electron: 'electron'
+  // },
   module: {
     rules: [
       // rollup slows things down a little bit.
@@ -74,6 +78,6 @@ module.exports = {
       template: Path.join(src_path, 'index.ejs'),
       title: 'meaningful chaos',
     }),
-    new webpack.HotModuleReplacementPlugin(),
+    // new webpack.HotModuleReplacementPlugin(),
   ],
 }

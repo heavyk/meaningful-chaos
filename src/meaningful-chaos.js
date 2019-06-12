@@ -6,8 +6,14 @@ import { put_cam_in_video_element, capture_video } from './camera'
 
 const raf = requestAnimationFrame
 
+electron.ipc.on('hello', (event, msg) => {
+  console.log('hello!', msg)
+})
+
+
 plugger(function meaningful_chaos (hh) {
-  const { G, h, c, t, v } = hh
+  // const { G, h, c, t, v } = hh
+  const { h, v } = hh
   // const screen_size = G.resize()
 
   // main drawing canvas (the one the webcam is streamed into)

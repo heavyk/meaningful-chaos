@@ -1,68 +1,69 @@
 // Modules to control application life and create native browser window
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain: ipc } = require('electron')
 const Path = require('path')
 
 var listen_port = 1166
-var listen_ip = '127.0.0.1' // '0.0.0.0'
-const config = {
-  outputFilename: '/bundle.js',
-}
+var listen_ip = '127.0.0.1' // '0.0.0.0' // gives a firewall warning on OSX, so use localhost
 
-// Keep a global reference of the window object, if you don't, the window will
-// be closed automatically when the JavaScript object is garbage collected.
-var mainWindow
+const webpack = require('webpack')
+const WebpackDevServer = require('webpack-dev-server')
+const redis = require('./redis-db')
+
+var main_window
 var contents
 
-// function start_dev_server () {
-//   const createConfig = require('webpack-dev-server/lib/utils/createConfig')
-//   const createLogger = require('webpack-dev-server/lib/utils/createLogger')
-//   const options = createConfig(config, process.argv, { port: listen_port })
-//   startDevServer(config, options)
-// }
+// ipc.on('key', event => {
+//   console.log('key', event)
+// })
 
 function start_server () {
   const config = require('./webpack.config')
-  const webpack = require('webpack')
-  const WebpackDevServer = require('webpack-dev-server')
-
   return new Promise((resolve, reject) => {
-    var i = 0
+    var i = 3 // after two callbacks
     const compiler = webpack(config)
     const server = new WebpackDevServer(compiler, config.devServer)
 
+    redis.start().then(() => {
+      if (!--i) resolve(server)
+    })
+
     compiler.hooks.done.tap('AfterCompileAndListen', () => {
-      if (++i === 2) resolve(server)
+      if (!--i) resolve(server)
     })
 
     server.listen(listen_port, listen_ip, err => {
       if (err) reject(err)
-      if (++i === 2) resolve(server)
+      if (!--i) resolve(server)
     })
   })
 }
 
 function createWindow () {
-  mainWindow = new BrowserWindow({
+  main_window = new BrowserWindow({
     width: 1920,
     height: 1100,
     webPreferences: {
-      preload: Path.join(__dirname, 'preload.js'),
+      preload: __dirname + '/preload.js',
     },
   })
 
-  contents = mainWindow.webContents
-  mainWindow.loadFile('splash.html')
+  contents = main_window.webContents
+  main_window.loadFile('splash.html')
   contents.openDevTools()
 
   start_server().then(() => {
-    mainWindow.loadURL('http://localhost:' + listen_port + '/')
+    main_window.loadURL('http://localhost:' + listen_port + '/')
     // contents.openDevTools()
   })
 
-  mainWindow.on('closed', () => {
-    mainWindow = null
+  main_window.on('closed', () => {
+    main_window = null
     contents = null
   })
+
+  // setTimeout(() => {
+  //   contents.send('hello', {lala: 1234})
+  // }, 2000)
 }
 
 // This method will be called when Electron has finished
@@ -82,7 +83,7 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   // for macOS re-create the window when the dock icon is clicked
-  if (mainWindow === null) createWindow()
+  if (main_window === null) createWindow()
 })
 
 // function key_code (key) {

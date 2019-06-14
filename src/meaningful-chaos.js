@@ -40,10 +40,10 @@ plugger(function meaningful_chaos (hh) {
 
   put_cam_in_video_element(video, (stream) => {
     const settings = stream.getTracks()[0].getSettings()
-    const { width, height, frameRate } = settings
+    const { width, height, frame_rate } = settings
     canvas.resize(settings)
 
-    if (frameRate && !fps) fps = frameRate
+    if (frame_rate && !fps) fps = frame_rate
     max_diff = 1000 / fps
     start_time = performance.now()
     raf(update)

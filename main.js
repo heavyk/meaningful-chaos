@@ -44,7 +44,7 @@ function start_server () {
 function createWindow () {
   main_window = new BrowserWindow({
     width: 1920,
-    height: 1100,
+    height: 1155,
     webPreferences: {
       preload: __dirname + '/preload.js',
       // allowRunningInsecureContent: true,
@@ -59,6 +59,7 @@ function createWindow () {
 
   start_server().then(() => {
     main_window.loadURL('http://localhost:' + listen_port + '/')
+    contents.send('redis', redis.sock)
     // contents.openDevTools()
   })
 

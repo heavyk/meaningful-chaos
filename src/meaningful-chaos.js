@@ -3,6 +3,7 @@ import plugger from '@lib/plugins/plugger'
 import { empty_array } from '@lib/utils'
 
 import { put_cam_in_video_element, capture_video } from './camera'
+import { random_img_test, exaggerate_pixels, strongest_pixels } from './grid-stuff'
 
 const raf = requestAnimationFrame
 

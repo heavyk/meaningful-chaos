@@ -1,0 +1,18 @@
+root = 1
+
+[neural-redis/**.c]
+indent_style = space
+indent_size = 4
+
+
+[FALCONN/src/redis/**.cc]
+indent_style = space
+indent_size = 4
+
+[FALCONN/src/random_benchmark/**.cc]
+indent_style = space
+indent_size = 2
+
+[*.js]
+indent_style = space
+indent_size = 2

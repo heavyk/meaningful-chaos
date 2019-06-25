@@ -6,8 +6,11 @@ import { put_cam_in_video_element, capture_video } from './camera'
 
 const raf = requestAnimationFrame
 
-electron.ipc.on('hello', (event, msg) => {
-  console.log('hello!', msg)
+var db
+
+electron.ipc.on('redis', (event, sock) => {
+  // connect to redis
+  db = new electron.Redis(sock)
 })
 
 
@@ -17,7 +20,7 @@ plugger(function meaningful_chaos (hh) {
   // const screen_size = G.resize()
 
   // main drawing canvas (the one the webcam is streamed into)
-  var canvas = h('canvas')
+  var grid_canvas = h('canvas')
   // offscreen canvas to hold video pixels
   var video_canvas = h('canvas')
   // video element which the webcam streams into
@@ -38,17 +41,6 @@ plugger(function meaningful_chaos (hh) {
   var fps = 2
   var max_diff = 1000 / fps
 
-  put_cam_in_video_element(video, (stream) => {
-    const settings = stream.getTracks()[0].getSettings()
-    const { width, height, frame_rate } = settings
-    canvas.resize(settings)
-
-    if (frame_rate && !fps) fps = frame_rate
-    max_diff = 1000 / fps
-    start_time = performance.now()
-    raf(update)
-  })
-
   function update (now) {
     var diff = now - last_frame
     if (diff >= max_diff) {
@@ -57,8 +49,8 @@ plugger(function meaningful_chaos (hh) {
       // random_img_test(video_canvas, 0.1) // generate an image with Math.random()
       // exaggerate_pixels(video_canvas, canvas, 50)
       // strongest_pixels(video_canvas, canvas, 50)
-      summarise_pixels(video_canvas, canvas, 2)
-      summarise_densities(canvas, summary_canvas)
+      summarise_pixels(video_canvas, grid_canvas, 2)
+      summarise_densities(grid_canvas, summary_canvas)
 
       // canvas.pt = run_sequence(canvas, )
 
@@ -78,69 +70,31 @@ plugger(function meaningful_chaos (hh) {
     raf(update)
   }
 
+  put_cam_in_video_element(video, (stream) => {
+    const settings = stream.getTracks()[0].getSettings()
+    const { width, height, frame_rate } = settings
+    canvas.resize(settings)
+
+    if (frame_rate && !fps) fps = frame_rate
+    max_diff = 1000 / fps
+    start_time = performance.now()
+    raf(update)
+  })
+
   return [
     // video,
-    canvas,
+    // grid_canvas,
     summary_canvas,
   ]
 })
 
-function random_img_test (dest_canvas, magnitude = 0.1) {
-  const width = dest_canvas.width
-  const height = dest_canvas.height
-  const dd = new Uint8ClampedArray(width * height * 4)
-
-  for (var y = 1; y <= height; y++) {
-    for (var x = 1; x <= width; x++) {
-      var i = (x * 4) + (y * width * 4)
-      dd[i + 0] = Math.floor(Math.random() * magnitude * 255)
-      dd[i + 1] = Math.floor(Math.random() * magnitude * 255)
-      dd[i + 2] = Math.floor(Math.random() * magnitude * 255)
-      dd[i + 3] = 255
-    }
-  }
-
-  dest_canvas.getContext('2d').putImageData(new ImageData(dd, width), 0, 0)
-}
-
-function exaggerate_pixels (src_canvas, dest_canvas, magnitude = 4) {
-  const width = dest_canvas.width
-  const height = dest_canvas.height
-  const dd = new Uint8ClampedArray(width * height * 4)
-  var vd = src_canvas.getContext('2d').getImageData(0, 0, width, height).data
-
-  for (var i = 0; i < vd.length; i += 4) {
-    dd[i + 0] = Math.min(vd[i + 0] * magnitude, 255)
-    dd[i + 1] = Math.min(vd[i + 1] * magnitude, 255)
-    dd[i + 2] = Math.min(vd[i + 2] * magnitude, 255)
-    dd[i + 3] = 255
-  }
-
-  dest_canvas.getContext('2d').putImageData(new ImageData(dd, width), 0, 0)
-}
-
-function strongest_pixels (src_canvas, dest_canvas, magnitude = 4) {
-  const width = dest_canvas.width
-  const height = dest_canvas.height
-  const dd = new Uint8ClampedArray(width * height * 4)
-  var vd = src_canvas.getContext('2d').getImageData(0, 0, width, height).data
-
-  for (var i = 0; i < vd.length; i += 4) {
-    var v = Math.min(vd[i + 0] * magnitude, vd[i + 1] * magnitude, vd[i + 2] * magnitude, 255)
-    dd[i + 0] = v
-    dd[i + 1] = v
-    dd[i + 2] = v
-    dd[i + 3] = 255
-  }
-
-  dest_canvas.getContext('2d').putImageData(new ImageData(dd, width), 0, 0)
-}
-
 function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
   const width = dest_canvas.width
   const height = dest_canvas.height
-  const dd = new Uint8ClampedArray(width * height * 4)
+  const _dd = new Uint8ClampedArray(width * height * 4)
+
   var vd = src_canvas.getContext('2d').getImageData(0, 0, width, height).data
+  // @Performance: convert this to a a Float32Array
   var densities = empty_array(256)
   var grid = empty_array(width).map(() => empty_array(height))
   var max_density = 0
@@ -172,6 +126,18 @@ function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
   dest_canvas.densities = densities
   dest_canvas.max_density = max_density
   dest_canvas.getContext('2d').putImageData(new ImageData(dd, width), 0, 0)
+}
+
+async function store_grid (ts, event, canvas) {
+  // - grid format: `struct { u16 width; u16 height; u32 reserved; u8[width * height] data }`
+	//   - key event: `redis.hset('keyup-k', 'grid-xxxxxxxx', Buffer.from(grid))`
+  const { width, height } = canvas
+  const _dd = new Uint8ClampedArray(4 + (width * height))
+  const wh = new Uint16ClampedArray(_dd.buffer, 0, 2)
+  const dd = new Uint8ClampedArray(_dd.buffer, 4, width * height)
+  wh[0] = width, wh[1] = height
+  // redis.hset(event, ts, Buffer.from(dd))
+  await redis.hset(event, 'grid-' + ts, dd.buffer)
 }
 
 function summarise_densities (src_canvas, dest_canvas) {

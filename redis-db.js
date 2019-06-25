@@ -6,19 +6,20 @@ const exec = require('execa')
 const mkdir = require('make-dir')
 const tmp_dir = require('temp-dir')
 const exists = require('path-exists')
+const log = require('pino')()
 
 async function ensure_installation () {
   async function extract_tar (filename) {
-    console.log('extract tar')
+    log.info('extract tar')
     return exec('tar', ['xzpf', filename, '--strip-components=1', '-C', '.'], { cwd: redis_dir })
     .then(({ stdout }) => {
-      console.log('tar finished!', stdout)
+      log.info('tar finished!', stdout)
       return exec('make', ['distclean'], { cwd: redis_dir })
     }).then(({ stdout }) => {
-      console.log('make distclean finished!', stdout)
+      log.info('make distclean finished!', stdout)
       return exec('make',  ['-j'+ require('os').cpus().length], { cwd: redis_dir })
-    }).then(({ stdout }) => {
-      console.log('make completed')
+    }).then(() => {
+      log.info('make completed')
     })
   }
 
@@ -41,7 +42,6 @@ async function ensure_installation () {
       var res = await got('https://github.com/antirez/redis-hashes/raw/master/README')
       // 'hash' | filename | digest-name | digest-value | url
       var latest = res.body.trim().split('\n').pop().split(' ')
-      console.log(latest)
       const tar_path = Path.join(redis_dir, latest[1])
       if (!(await exists(tar_path))) {
         await download_tar()
@@ -56,14 +56,13 @@ async function ensure_installation () {
 }
 
 const redis = {
-  start,
-  stop,
+  start, stop, kill, pid,
   dir: Path.join(__dirname, 'redis'),
   server_bin: Path.join(__dirname, 'redis', 'src', 'redis-server'),
   sock: tmp_dir + '/meaningful_chaos_redis.sock',
   pidfile: tmp_dir + '/meaningful_chaos_redis.pid',
   logfile: tmp_dir + '/meaningful_chaos_redis.log',
-  conffile: Path.join(__dirname, 'redis', 'meaningful_chaos.conf'),
+  conffile: Path.join(__dirname, 'redis', 'meaningful-chaos.conf'),
 }
 
 redis.conf = [
@@ -86,37 +85,103 @@ redis.conf = [
   'rdbcompression yes',
   'rdbchecksum yes',
   'dbfilename db.rdb',
-  'dir ./',
+  'dir ' + redis.dir,
+  'loadmodule ' + Path.join(__dirname, 'redis', 'src', 'meaningful-chaos.so'),
+  // 'loadmodule ' + Path.join(__dirname, 'neural-redis', 'neuralredis.so'),
   'rdb-save-incremental-fsync yes',
 ]
 
-
+// TODO: generalise these. so that, given a conf similar to `redis` the start/stop commands generalise on the pidfile, conffile, etc.
 async function start () {
+  // log.info('*start*')
   await ensure_installation()
-  if (!(await exists(redis.pidfile))) {
-    console.log('starting...')
-    await write_file(redis.conf.path, redis.conf.join('\n'))
-    await exec(redis.server_bin, [redis.conf.path])
-    console.log('started on:', redis.sock)
+  // log.info('*ensured*')
+  var exists_ = await exists(redis.pidfile)
+  // log.info('*exists*', exists_)
+  if (exists_) {
+    const pid_ = await pid()
+    if (!(await is_running(pid_))) await kill(pid_)
   }
-  console.log('redis-cli -s '+redis.sock)
+
+  log.info('starting...')
+  Fs.unlink(redis.logfile, ()=>{}) // truncate log?
+  await write_file(redis.conffile, redis.conf.join('\n'))
+  await exec(redis.server_bin, [redis.conffile], { detached: true })
+  await sleep(100) // give it a little time to start
+  // let pid_ = await pid()
+  log.info('redis-cli -s '+redis.sock)
+}
+
+async function pid () {
+  // log.info('*pid*')
+  return await read_file(redis.pidfile) * 1
+}
+
+async function kill (pid_ = -1) {
+  // log.info('*kill*')
+  if (!~pid_) pid_ = await pid()
+  log.info('killing:', pid_)
+  return await exec('kill', [pid_]).then(() => Fs.unlink(redis.pidfile, ()=>{})).catch(()=>{})
 }
 
 async function stop () {
-  if (await exists(redis.pidfile)) {
-    const pid = await read_file(redis.pidfile) * 1
-    await exec('kill', [pid])
-    console.log('killed:', pid)
+  // log.info('*stop*')
+  var exists_ = await exists(redis.pidfile)
+  // log.info('*exists*', exists_)
+  if (exists_) {
+    const pid_ = await pid()
+    if (await is_running(pid_)) {
+      await kill(pid_)
+      log.info('killed:', pid_)
+    // } else {
+    //   log.info(`pid: ${pid_} was not running`)
+    //   log.info(await read_file(redis.logfile, 'utf8'))
+    }
+
+    Fs.unlink(redis.pidfile, ()=>{})
+    while (await is_running(pid_)) {
+      await sleep(500)
+    }
   }
+}
+
+// TODO: move out to a lib
+async function is_running (query) {
+  // log.info('*is_running*')
+  query = (query + '').toLowerCase()
+  let cmd = ''
+  switch (process.platform) {
+    case 'win32' : cmd = `tasklist`; break
+    case 'darwin' : cmd = `ps -ax`; break
+    case 'linux' : cmd = `ps -A`; break
+  }
+
+  const { stdout } = await exec.shell(cmd)
+  return stdout.toLowerCase().indexOf(query) > -1
+}
+
+// TODO: move out to a lib
+function sleep (ms) {
+  // log.info('*sleep*')
+  return new Promise((resolve) => setTimeout(resolve, ms) )
 }
 
 if (!module.parent) {
   ensure_installation()
-    .then(() => start())
-    .then(() => stop())
-    .catch(err => {
-      console.error('error:', err)
+    .then(async () => {
+      await stop()
+      await start()
+      await sleep(1000) // give it 1s to fail startup
+      if (!(await is_running(await pid()))) {
+        log.error('started process not running. something happened.')
+        log.info(await read_file(redis.logfile, 'utf8'))
+      }
+      // await stop()
+    }).catch(err => {
+      log.error(err.stack)
+      log.info(Fs.readFileSync(redis.logfile, 'utf8'))
     })
+
 }
 
 // const Redis = require('ioredis')

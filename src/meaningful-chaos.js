@@ -29,10 +29,10 @@ plugger(function meaningful_chaos (hh) {
 
   var summary_canvas = h('canvas', { width: 256 })
 
-  canvas.resize = v()
-  canvas.resize(({ width, height }) => {
-    video_canvas.width = canvas.width = video.width = width
-    canvas.height = video.height = video_canvas.height = height
+  grid_canvas.resize = v()
+  grid_canvas.resize(({ width, height }) => {
+    video_canvas.width = grid_canvas.width = video.width = width
+    grid_canvas.height = video.height = video_canvas.height = height
   })
 
   var frames = 0
@@ -48,12 +48,12 @@ plugger(function meaningful_chaos (hh) {
       frames++
       capture_video(video, video_canvas)
       // random_img_test(video_canvas, 0.1) // generate an image with Math.random()
-      // exaggerate_pixels(video_canvas, canvas, 50)
-      // strongest_pixels(video_canvas, canvas, 50)
+      // exaggerate_pixels(video_canvas, grid_canvas, 50)
+      // strongest_pixels(video_canvas, grid_canvas, 50)
       summarise_pixels(video_canvas, grid_canvas, 2)
       summarise_densities(grid_canvas, summary_canvas)
 
-      // canvas.pt = run_sequence(canvas, )
+      // canvas.pt = run_sequence(grid_canvas, )
 
       if (show_fps) {
         var elapsed = (performance.now() - start_time) / 1000
@@ -74,7 +74,7 @@ plugger(function meaningful_chaos (hh) {
   put_cam_in_video_element(video, (stream) => {
     const settings = stream.getTracks()[0].getSettings()
     const { width, height, frame_rate } = settings
-    canvas.resize(settings)
+    grid_canvas.resize(settings)
 
     if (frame_rate && !fps) fps = frame_rate
     max_diff = 1000 / fps
@@ -92,7 +92,7 @@ plugger(function meaningful_chaos (hh) {
 function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
   const width = dest_canvas.width
   const height = dest_canvas.height
-  const _dd = new Uint8ClampedArray(width * height * 4)
+  const dd = new Uint8ClampedArray(width * height * 4)
 
   var vd = src_canvas.getContext('2d').getImageData(0, 0, width, height).data
   // @Performance: convert this to a a Float32Array

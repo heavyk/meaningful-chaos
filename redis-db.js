@@ -27,16 +27,15 @@ async function ensure_installation () {
     return new Promise((resolve, reject) => {
       const dest = Fs.createWriteStream(tar_path)
       got.stream(latest[4]).pipe(dest)
-      dest.on('end', () => {
-        // extract_tar()
-        resolve()
-      }).on('error', reject)
+      dest.on('end', () => { resolve() }).on('error', reject)
     })
   }
 
   try {
     if (!(await exists(redis.server_bin))) {
       // for now, redis will not upgrade itself. just download the latest
+      // so, if you want to upgrade, just delete the redis directory
+      // actually, that's gonna cause problems because the db is stored there...
       await mkdir(redis_dir)
       const got = require('got')
       var res = await got('https://github.com/antirez/redis-hashes/raw/master/README')
@@ -55,6 +54,7 @@ async function ensure_installation () {
   }
 }
 
+var _db
 const redis = {
   start, stop, kill, pid,
   dir: Path.join(__dirname, 'redis'),
@@ -63,13 +63,21 @@ const redis = {
   pidfile: tmp_dir + '/meaningful_chaos_redis.pid',
   logfile: tmp_dir + '/meaningful_chaos_redis.log',
   conffile: Path.join(__dirname, 'redis', 'meaningful-chaos.conf'),
+  get db () {
+    if (!_db) {
+      const Redis = require('ioredis')
+      _db = new Redis(redis.sock)
+    }
+
+    return _db
+  }
 }
 
 redis.conf = [
   'bind 127.0.0.1',
-  // 'port 1167', // 'port 6379',
-  // 'bind no',
-  'port no',
+  // 'port 1167',
+  'port 6379',
+  // 'port no',
   'unixsocket ' + redis.sock,
   'protected-mode yes',
   'timeout 0',
@@ -84,70 +92,61 @@ redis.conf = [
   'save 60 10000', // after 60 sec if at least 10000 keys changed
   'rdbcompression yes',
   'rdbchecksum yes',
-  'dbfilename db.rdb',
+  'dbfilename db.rdb', // @Incomplete: move this to the data direcory, so it doesn't get deleted on an upgrade.
   'dir ' + redis.dir,
-  'loadmodule ' + Path.join(__dirname, 'redis', 'src', 'meaningful-chaos.so'),
+  // 'loadmodule ' + Path.join(__dirname, 'redis', 'redis_date_module.so'),
+  'loadmodule ' + Path.join(__dirname, 'redis', 'meaningful-chaos.so'),
   // 'loadmodule ' + Path.join(__dirname, 'neural-redis', 'neuralredis.so'),
   'rdb-save-incremental-fsync yes',
 ]
 
 // TODO: generalise these. so that, given a conf similar to `redis` the start/stop commands generalise on the pidfile, conffile, etc.
 async function start () {
-  // log.info('*start*')
   await ensure_installation()
-  // log.info('*ensured*')
-  var exists_ = await exists(redis.pidfile)
-  // log.info('*exists*', exists_)
-  if (exists_) {
-    const pid_ = await pid()
-    if (!(await is_running(pid_))) await kill(pid_)
-  }
+  await stop()
 
-  log.info('starting...')
   Fs.unlink(redis.logfile, ()=>{}) // truncate log?
+
   await write_file(redis.conffile, redis.conf.join('\n'))
   await exec(redis.server_bin, [redis.conffile], { detached: true })
-  await sleep(100) // give it a little time to start
-  // let pid_ = await pid()
+
+  do await sleep(50) // give it a little time to start
+  while (!(await pid()))
+
   log.info('redis-cli -s '+redis.sock)
 }
 
 async function pid () {
-  // log.info('*pid*')
-  return await read_file(redis.pidfile) * 1
+  var p
+  try {
+    p = await read_file(redis.pidfile)
+  } catch (e) {
+    p = 0
+  }
+
+  return p * 1
 }
 
 async function kill (pid_ = -1) {
-  // log.info('*kill*')
   if (!~pid_) pid_ = await pid()
   log.info('killing:', pid_)
   return await exec('kill', [pid_]).then(() => Fs.unlink(redis.pidfile, ()=>{})).catch(()=>{})
 }
 
 async function stop () {
-  // log.info('*stop*')
-  var exists_ = await exists(redis.pidfile)
-  // log.info('*exists*', exists_)
-  if (exists_) {
+  if (await exists(redis.pidfile)) {
     const pid_ = await pid()
-    if (await is_running(pid_)) {
+    while (await is_running(pid_)) {
       await kill(pid_)
-      log.info('killed:', pid_)
-    // } else {
-    //   log.info(`pid: ${pid_} was not running`)
-    //   log.info(await read_file(redis.logfile, 'utf8'))
+      await sleep(500)
     }
 
     Fs.unlink(redis.pidfile, ()=>{})
-    while (await is_running(pid_)) {
-      await sleep(500)
-    }
   }
 }
 
 // TODO: move out to a lib
 async function is_running (query) {
-  // log.info('*is_running*')
   query = (query + '').toLowerCase()
   let cmd = ''
   switch (process.platform) {
@@ -162,7 +161,6 @@ async function is_running (query) {
 
 // TODO: move out to a lib
 function sleep (ms) {
-  // log.info('*sleep*')
   return new Promise((resolve) => setTimeout(resolve, ms) )
 }
 
@@ -183,8 +181,5 @@ if (!module.parent) {
     })
 
 }
-
-// const Redis = require('ioredis')
-// var db = new Redis(redis.sock)
 
 module.exports = redis

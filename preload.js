@@ -3,5 +3,6 @@
 
 window.electron = {
   ipc: require('electron').ipcRenderer,
+  versions: process.versions,
   Redis: require('ioredis'),
 }

@@ -9,6 +9,8 @@ const exists = require('path-exists')
 const log = require('pino')()
 
 async function ensure_installation () {
+  // @Incomplete: windows installation from this repo:
+  //   https://github.com/tporadowski/redis
   async function extract_tar (filename) {
     log.info('extract tar')
     return exec('tar', ['xzpf', filename, '--strip-components=1', '-C', '.'], { cwd: redis_dir })
@@ -84,7 +86,8 @@ redis.conf = [
   'daemonize yes',
   'supervised no',
   'pidfile ' + redis.pidfile,
-  'loglevel notice',
+  // 'loglevel notice',
+  'loglevel debug',
   'logfile ' + redis.logfile,
   'stop-writes-on-bgsave-error yes',
   'save 900 1', // after 900 sec (15 min) if at least 1 key changed
@@ -94,8 +97,8 @@ redis.conf = [
   'rdbchecksum yes',
   'dbfilename db.rdb', // @Incomplete: move this to the data direcory, so it doesn't get deleted on an upgrade.
   'dir ' + redis.dir,
-  // 'loadmodule ' + Path.join(__dirname, 'redis', 'redis_date_module.so'),
-  'loadmodule ' + Path.join(__dirname, 'redis', 'meaningful-chaos.so'),
+  // 'loadmodule ' + Path.join(__dirname, 'redis_module', 'redis_date_module.so'),
+  'loadmodule ' + Path.join(__dirname, 'redis_module', 'meaningful-chaos.so'),
   // 'loadmodule ' + Path.join(__dirname, 'neural-redis', 'neuralredis.so'),
   'rdb-save-incremental-fsync yes',
 ]
@@ -110,8 +113,13 @@ async function start () {
   await write_file(redis.conffile, redis.conf.join('\n'))
   await exec(redis.server_bin, [redis.conffile], { detached: true })
 
-  do await sleep(50) // give it a little time to start
-  while (!(await pid()))
+  let tries = 10
+  do {
+    await sleep(50) // give it a little time to start
+    log.info('...')
+  } while (--tries && !(await pid()))
+  // do await sleep(50) // give it a little time to start
+  // while (!(await pid()))
 
   log.info('redis-cli -s '+redis.sock)
 }
@@ -120,7 +128,9 @@ async function pid () {
   var p
   try {
     p = await read_file(redis.pidfile)
+    log.info('pid: '+p)
   } catch (e) {
+    // log.warn('pidfile read error: ' + e)
     p = 0
   }
 
@@ -138,6 +148,7 @@ async function stop () {
     const pid_ = await pid()
     while (await is_running(pid_)) {
       await kill(pid_)
+      log.info('killing: '+pid_)
       await sleep(500)
     }
 
@@ -165,21 +176,32 @@ function sleep (ms) {
 }
 
 if (!module.parent) {
-  ensure_installation()
-    .then(async () => {
-      await stop()
-      await start()
-      await sleep(1000) // give it 1s to fail startup
-      if (!(await is_running(await pid()))) {
-        log.error('started process not running. something happened.')
-        log.info(await read_file(redis.logfile, 'utf8'))
-      }
-      // await stop()
-    }).catch(err => {
-      log.error(err.stack)
-      log.info(Fs.readFileSync(redis.logfile, 'utf8'))
+  start().then(async () => {
+    await sleep(1000) // give it 1s to fail startup
+    if (!(await is_running(await pid()))) {
+      log.error('started process not running. something happened.')
+      log.info(await read_file(redis.logfile, 'utf8'))
+    }
+    // await stop()
+    const Tail = require('tail-forever')
+    let tail = new Tail(redis.logfile)
+    tail.on('line', (line) => {
+      console.log(line)
     })
-
+    tail.on('error', (err) => {
+      console.log('ERROR:', err)
+    })
+    redis.tail = tail
+  }).catch(err => {
+    log.error(err.stack)
+    log.info(Fs.readFileSync(redis.logfile, 'utf8'))
+  })
 }
+
+// this should go in electron!!
+process.on('exit', async () => {
+  await stop()
+  redis.tail.unwatch()
+})
 
 module.exports = redis

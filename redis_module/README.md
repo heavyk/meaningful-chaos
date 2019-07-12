@@ -1,32 +1,42 @@
-ZRANGE 1 1 - will give me the second element in the sorted set
-
-if I set the first value to always equal the origin, this corresponds to the exactly the cardinal ids associated with the LHS index. so each of these will store a text id usable for the user's storage.
-
+by default, a universe is created in the default database. (TODO) the database can be selected by passing the desired number when loading the module. the universe data structure is created when the module loads at the key: `__UV__` (so don't delete that key, hehe).
 ---
 
-### MC.UNIVERSE.CREATE <universe_id> <num dimensions>
+### (TODO) MC.STATS
 
-create a new universe at key.
+returns an array of statistics the universe has, like x points, x sectors, etc.
 
-ex: create a universe called my_universe with 128 dimensions in it
+### (TODO) MC.CONFIG
 
-> mc.universe.create my_universe 128
+returns the universe configuration for this database.
 
-### MC.UNIVERSE.QUERY <universe_id> <positions[dimensions]> [radius=1] [results=10]
+defaults:
+- dimensions 128
+- sector_num_elements 1024
 
-ex: query my_universe for up to ten (nearest) results located within 5.2 units of coordinates 1.4, 2.5, ...
+### (TODO) MC.CONFIG.SET <key> <value>
 
-> mc.universe.query my_universe 1.4 2.5 ... 5.2 10
+returns the universe configuration for this database.
 
-### MC.UNIVERSE.NEAR <universe_id> <radius> <results> [position ...]
+| key                 | type   | default | description |
+|---------------------|:------:|:-------:|-------------|
+| dimensions          | uint32 | 128     | number of dimensions new sectors will be created with |
+| sector_max_elements | uint32 | 1024    | max number of elements that a new sector will be able to hold (can be resized) |
 
-in <universe_id>, query for nearest <results> elements within <radius> of [position]. position are not required, as any positions not given are considered as zeros (which doesn't add any distance to the inner product calculation).
+> mc.config.set dimensions 256
 
-### MC.POINT.CREATE <universe_id> <point_id> [pos: float element list]
+### (TODO) MC.NEAR <radius> <results> [position ...]
 
-create a concept with id at position, (any missing dimensions will become random values)
+query for nearest <results> elements within <radius> of [position]. position are not required, as any positions not given are considered as zeros (which doesn't add any distance to the inner product calculation).
 
-### MC.POINT.POS <universe_id> <point_id>
+ex: query for up to ten (nearest) results located within 5.2 units of coordinates 1.4, 2.5, ...
+
+> mc.near 5.2 10 1.4 2.5 ...
+
+### MC.POINT.CREATE <point_id> <position:float(dimensions)>
+
+create a point with id at position, (any missing dimensions will become random values)
+
+### MC.POINT.POS <point_id>
 
 return the position of id in the universe.
 

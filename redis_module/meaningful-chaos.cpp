@@ -5,11 +5,16 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 #include <Eigen/Dense>
 #include <random>
 
 using namespace Eigen;
+
+static const char* UV_STR = "__UV__";
+static RedisModuleString* UV;
 
 
 std::uniform_real_distribution<double> udist(-1000, 1000);
@@ -27,6 +32,55 @@ typedef float number_t;
 
 #define AUTO_MEMORY() ctx->flags |= REDISMODULE_CTX_AUTO_MEMORY
 
+int ReplyWithError (RedisModuleCtx* ctx, const char* format, ...) {
+  char buffer[256];
+  va_list args;
+  va_start (args, format);
+  vsnprintf (buffer, 255, format, args);
+
+  RedisModule_ReplyWithError(ctx, &buffer[0]);
+
+  va_end (args);
+  return REDISMODULE_OK;
+}
+
+// typedef struct RedisModuleString {
+//     unsigned type:4;
+//     unsigned encoding:4;
+//     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
+//                             * LFU data (least significant 8 bits frequency
+//                             * and most significant 16 bits access time). */
+//     int refcount;
+//     void *ptr;
+// } RedisModuleString;
+
+
+// copy-n-paste from server.h
+typedef void *(*moduleTypeLoadFunc)(struct RedisModuleIO *io, int encver);
+typedef void (*moduleTypeSaveFunc)(struct RedisModuleIO *io, void *value);
+typedef void (*moduleTypeRewriteFunc)(struct RedisModuleIO *io, struct redisObject *key, void *value);
+typedef void (*moduleTypeDigestFunc)(struct RedisModuleDigest *digest, void *value);
+typedef size_t (*moduleTypeMemUsageFunc)(const void *value);
+typedef void (*moduleTypeFreeFunc)(void *value);
+
+typedef struct RedisModuleType {
+    uint64_t id; /* Higher 54 bits of type ID + 10 lower bits of encoding ver. */
+    struct RedisModule *module;
+    moduleTypeLoadFunc rdb_load;
+    moduleTypeSaveFunc rdb_save;
+    moduleTypeRewriteFunc aof_rewrite;
+    moduleTypeMemUsageFunc mem_usage;
+    moduleTypeDigestFunc digest;
+    moduleTypeFreeFunc free;
+    char name[10]; /* 9 bytes name + null term. Charset: A-Z a-z 0-9 _- */
+} moduleType;
+
+typedef struct moduleValue {
+    moduleType *type;
+    void *value;
+} moduleValue;
+
+// end copy-n-paste
 
 static RedisModuleType *Universe_Data;
 // static RedisModuleType *Point_Data; // not yet used
@@ -86,11 +140,9 @@ typedef struct Universe {
 
 } Universe;
 
-Universe* Universe_create (uint16_t dimensions = 128, uint32_t sector_points = 1024, uint16_t flags = 0, uint64_t id = 0) {
-    Universe *u;
-    u = (Universe*) RedisModule_Calloc(1,sizeof(*u));
+Universe* Universe_create (uint16_t dimensions = 128, uint32_t sector_points = 1024, uint16_t flags = 0) {
+    Universe* u = (Universe*) RedisModule_Calloc(1,sizeof(*u));
     u->id2sector = RedisModule_CreateDict(NULL);
-    // u->id = id || Universe_next_id++;
     u->flags = flags;
     u->dimensions = dimensions;
 
@@ -133,7 +185,6 @@ Sector* Universe_ensure_space (Universe* u, uint64_t more_points) {
 
 void UniverseRdbSave (RedisModuleIO *rdb, void *value) {
     Universe* u = (Universe*) value;
-    // RedisModule_SaveUnsigned(rdb, u->id);
     RedisModule_SaveUnsigned(rdb, u->dimensions);
     RedisModule_SaveUnsigned(rdb, u->flags);
     // num_points is calculatable
@@ -172,7 +223,6 @@ void* UniverseRdbLoad (RedisModuleIO *rdb, int encver) {
         return NULL;
     }
 
-    uint64_t id = RedisModule_LoadUnsigned(rdb);
     uint64_t dimensions = RedisModule_LoadUnsigned(rdb);
     uint64_t flags = RedisModule_LoadUnsigned(rdb);
     uint64_t sector_points = RedisModule_LoadUnsigned(rdb);
@@ -180,7 +230,7 @@ void* UniverseRdbLoad (RedisModuleIO *rdb, int encver) {
     uint64_t num_points = 0;
     uint64_t max_points = 0;
 
-    Universe* u = Universe_create(dimensions, sector_points, flags, id);
+    Universe* u = Universe_create(dimensions, sector_points, flags);
 
     Sector* prev = NULL;
     Sector* s = NULL;
@@ -269,7 +319,45 @@ size_t UniverseMemUsage (const void *value) {
     return bytes;
 }
 
+Universe* GetUniverse (RedisModuleCtx* ctx) {
+    // get universe key
+    UV = RedisModule_CreateString(ctx, UV_STR, strlen(UV_STR));
+    RedisModuleKey *key = (RedisModuleKey*) RedisModule_OpenKey(ctx, UV, REDISMODULE_READ|REDISMODULE_WRITE);
+    auto type = RedisModule_ModuleTypeGetType(key);
+
+    Universe* u;
+    if (type == REDISMODULE_KEYTYPE_EMPTY) {
+        int64_t sector_points = 1024;
+        int64_t dimensions = 128;
+        int64_t flags = 0;
+
+        // if (argc > 2) {
+        //     if (RedisModule_StringToLongLong(argv[2], &dimensions) == REDISMODULE_ERR || dimensions < 0)
+        //         return RedisModule_ReplyWithError(ctx, "ERR: dimensions should be a positive integer");
+        // }
+        //
+        // if (dimensions <= 0) dimensions = 128;
+        // if ((unsigned) dimensions > ULONG_MAX) dimensions = ULONG_MAX;
+        // if (sector_points <= 0) sector_points = 1024;
+        // if ((unsigned) sector_points > ULONG_MAX) sector_points = ULONG_MAX;
+
+        RedisModule_Log(ctx,"debug","creating universe: %d %d", dimensions, sector_points);
+
+        u = Universe_create(dimensions, sector_points, flags);
+        RedisModule_ModuleTypeSetValue(key, Universe_Data, u);
+        RedisModule_ReplicateVerbatim(ctx);
+    } else if (type != Universe_Data) {
+        ReplyWithError(ctx, "universe key `%s` is busy. its type is: '%s'", UV_STR, (moduleType*) type->name);
+        return NULL;
+    } else {
+        u = (Universe*) RedisModule_ModuleTypeGetValue(key);
+    }
+
+    return u;
+}
+
 // MC.UNIVERSE.CREATE <universe_id> [dimensions=128]
+/*
 int Cmd_Universe_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
 
@@ -309,25 +397,18 @@ int Cmd_Universe_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     RedisModule_ReplicateVerbatim(ctx);
     return REDISMODULE_OK;
 }
-
+*/
 //
 
 // MC.NEAR <universe_id> <radius> <results> [positions ...]
 // TODO
 
-// MC.UNIVERSE.QUERY <universe_id> <positions[dimensions]> [radius=1] [results=10]
+// MC.UNIVERSE.QUERY <positions[dimensions]> [radius=1] [results=10]
 int Cmd_Universe_Query (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
-    if (argc < 3) {
-        return RedisModule_WrongArity(ctx);
-    }
 
-    // get universe key
-    RedisModuleKey *key = (RedisModuleKey*) RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
-    if (RedisModule_ModuleTypeGetType(key) != Universe_Data)
-        return RedisModule_ReplyWithError(ctx,REDISMODULE_ERRORMSG_WRONGTYPE);
-
-    Universe *u = (Universe*) RedisModule_ModuleTypeGetValue(key);
+    Universe* u = GetUniverse(ctx);
+    if (!u) return REDISMODULE_OK;
 
     auto dims = u->dimensions;
     if (argc < dims + 2) {
@@ -352,19 +433,13 @@ int Cmd_Universe_Query (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     return REDISMODULE_ERR; // @Incomplete
 }
 
-// MC.POINT.CREATE <universe_id> <point_id> [pos: float(dimensions)]
+// MC.POINT.CREATE <point_id> [pos: float(dimensions)]
 int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
-    if (argc < 3) {
-        return RedisModule_WrongArity(ctx);
-    }
+    if (argc < 2) return RedisModule_WrongArity(ctx);
 
-    // get universe key
-    RedisModuleKey *u_key = (RedisModuleKey*) RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
-    if (RedisModule_ModuleTypeGetType(u_key) != Universe_Data)
-        return RedisModule_ReplyWithError(ctx,REDISMODULE_ERRORMSG_WRONGTYPE);
-
-    Universe *u = (Universe*) RedisModule_ModuleTypeGetValue(u_key);
+    Universe* u = GetUniverse(ctx);
+    if (!u) return REDISMODULE_OK;
 
     auto dims = u->dimensions;
     if (argc > dims + 2) {
@@ -413,21 +488,15 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     return REDISMODULE_OK;
 }
 
-// MC.POINT.POS <universe_id> <point_id>
+// MC.POINT.POS <point_id>
 int Cmd_Point_Pos (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
-    if (argc < 3) {
-        return RedisModule_WrongArity(ctx);
-    }
+    if (argc < 2) return RedisModule_WrongArity(ctx);
 
-    // get universe key
-    RedisModuleKey *key = (RedisModuleKey*) RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
-    if (RedisModule_ModuleTypeGetType(key) != Universe_Data)
-        return RedisModule_ReplyWithError(ctx,REDISMODULE_ERRORMSG_WRONGTYPE);
+    Universe* u = GetUniverse(ctx);
+    if (!u) return REDISMODULE_OK;
 
-    Universe *u = (Universe*) RedisModule_ModuleTypeGetValue(key);
-
-    RedisModuleString* id = argv[2];
+    RedisModuleString* id = argv[1];
 
     Sector* s = (Sector*) RedisModule_DictGet(u->id2sector, id, NULL);
     if (!s) return RedisModule_ReplyWithNull(ctx);
@@ -478,9 +547,11 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     Universe_Data = RedisModule_CreateDataType(ctx, "mc-uverse", RDB_VERSION, &tm);
     if (Universe_Data == NULL) return REDISMODULE_ERR;
 
-    if (RedisModule_CreateCommand(ctx,"mc.universe.create",
-        Cmd_Universe_Create,"write deny-oom",1,1,1) == REDISMODULE_ERR)
-        return REDISMODULE_ERR;
+    // @Incomplete: select database from argv
+
+    // if (RedisModule_CreateCommand(ctx,"mc.universe.create",
+    //     Cmd_Universe_Create,"write deny-oom",1,1,1) == REDISMODULE_ERR)
+    //     return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx,"mc.universe.query",
         Cmd_Universe_Query,"readonly",1,1,1) == REDISMODULE_ERR)

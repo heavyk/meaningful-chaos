@@ -1,6 +1,17 @@
 yarn-error.log
 .git
+.DS_Store
 node_modules/
 /dist/
 /redis/
+
+*.o
+*.so
+
+
+# temporary garbage
+/FALCONN
+/hnswlib
+# /neural-redis
 /neural-redis/examples/
+*.dSYM

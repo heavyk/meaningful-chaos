@@ -1,7 +1,5 @@
 ### redis module (c++ code)
-- build a redis module similar to neural-redis
 - use inner product for searches. for a small universe, it should be fast enough
-- make the universe static per database
 - force dimensions to be divisible by 16
 
 

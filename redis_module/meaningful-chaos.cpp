@@ -95,27 +95,34 @@ typedef Matrix<double, Dynamic, 1, ColMajor> d_Point;
 //     uint16_t flags;
 // } Concept;
 
+typedef struct Point {
+    RedisModuleString* id;
+    Sector* sector;
+    number_t* pos;
+} Point;
+
 typedef struct Sector {
-    uint32_t count;
-    uint32_t max;
+    uint32_t num_points;
+    uint32_t max_points;
     uint32_t dimensions;
     uint32_t flags;
 
     number_t* points;
     RedisModuleString** ids;
-    RedisModuleDict* id2point;
+    RedisModuleDict* id2point; // dict mapping id to the point positions data (OBSOLETED)
 
     Sector* next;
     // Sector* prev;
 } Sector;
 
-Sector* Sector_create (uint32_t dimensions, uint32_t num_points) {
+Sector* Sector_create (uint32_t dimensions, uint32_t max_points) {
     Sector* s = (Sector*) RedisModule_Calloc(1, sizeof(*s));
 
     s->dimensions = dimensions;
-    s->max = num_points;
-    s->points = (number_t*) RedisModule_Calloc(num_points, dimensions * sizeof(number_t));
-    s->ids = (RedisModuleString**) RedisModule_Calloc(num_points, sizeof(RedisModuleString*));
+    s->max_points = max_points;
+    s->num_points = 0;
+    s->points = (number_t*) RedisModule_Calloc(max_points, dimensions * sizeof(number_t));
+    s->ids = (RedisModuleString**) RedisModule_Calloc(max_points, sizeof(RedisModuleString*));
     s->id2point = RedisModule_CreateDict(NULL);
     return s;
 }
@@ -136,7 +143,8 @@ typedef struct Universe {
     uint16_t dimensions; // number of dimensions (individual sectors can have a different number of dimensions, because distance function is inner product)
     uint16_t flags; // any flags that need to be set on it
 
-    RedisModuleDict* id2sector; // dict mapping point id to its sector
+    RedisModuleDict* id2sector; // dict mapping point id to its sector (OBSOLETED)
+    RedisModuleDict* points; // dict mapping point id a point struct (TODO)
 
 } Universe;
 
@@ -193,15 +201,15 @@ void UniverseRdbSave (RedisModuleIO *rdb, void *value) {
     RedisModule_SaveUnsigned(rdb, u->num_sectors);
     Sector* s = (Sector*) u->sectors_head;
     while (s) {
-        // @Efficiency: save count/max together
-        RedisModule_SaveUnsigned(rdb, s->count);
-        RedisModule_SaveUnsigned(rdb, s->max);
+        // @Efficiency: save num_points/max_points together
+        RedisModule_SaveUnsigned(rdb, s->num_points);
+        RedisModule_SaveUnsigned(rdb, s->max_points);
         // @Efficiency: save dimensions/flags together
         RedisModule_SaveUnsigned(rdb, s->dimensions);
         RedisModule_SaveUnsigned(rdb, s->flags);
-        auto count = s->count;
+        auto num_points = s->num_points;
         auto dimensions = s->dimensions;
-        for (uint32_t j = 0; j < count; j++) {
+        for (uint32_t j = 0; j < num_points; j++) {
             RedisModule_SaveString(rdb, s->ids[j]);
             for (uint32_t k = 0; k < dimensions; k++) {
 #ifdef USE_DOUBLE
@@ -236,17 +244,17 @@ void* UniverseRdbLoad (RedisModuleIO *rdb, int encver) {
     Sector* s = NULL;
     for (uint32_t i = 0; i < num_sectors; i++) {
         // for each sector, load them:
-        int64_t count = RedisModule_LoadSigned(rdb);
-        int64_t max = RedisModule_LoadSigned(rdb);
+        int64_t num_points = RedisModule_LoadSigned(rdb);
+        int64_t max_points = RedisModule_LoadSigned(rdb);
         int64_t dimensions = RedisModule_LoadUnsigned(rdb);
         int64_t flags = RedisModule_LoadUnsigned(rdb);
-        s = Sector_create(dimensions, max);
+        s = Sector_create(dimensions, max_points);
         if (prev) prev->next = s;
         else u->sectors_head = s;
         s->flags = flags;
-        s->count = count;
+        s->num_points = num_points;
 
-        for (uint32_t j = 0; j < count; j++) {
+        for (uint32_t j = 0; j < num_points; j++) {
             size_t offset = j * dimensions;
             auto id = RedisModule_LoadString(rdb);
             s->ids[j] = id;
@@ -312,7 +320,7 @@ size_t UniverseMemUsage (const void *value) {
     Sector* s = u->sectors_head;
     size_t bytes = sizeof(*u);
     while (s) {
-        bytes += sizeof(*s) + s->max * sizeof(number_t);
+        bytes += sizeof(*s) + s->max_points * sizeof(number_t);
         s = s->next;
     }
 
@@ -448,10 +456,10 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     }
 
     Sector* s = Universe_ensure_space(u, 1);
-    // number_t* point = RedisModule_Malloc(sizeof(number_t) * dims);
     dims = s->dimensions; // just in case the sector is different dimensionality than the universe
 
-    number_t* point = &s->points[s->count * dims];
+    number_t* point = &s->points[s->num_points * dims];
+    // number_t* point = RedisModule_Calloc(sizeof(number_t) * dims);
 
     for (int i = 0; i < dims; i++) {
         int arg = i + 2;
@@ -469,14 +477,17 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     }
 
     // Point point(dpoint.cast<number_t>());
-    // memcpy(&s->points[++s->count * dims], point.data(), sizeof(number_t) * dims);
+    // memcpy(&s->points[++s->num_points * dims], point.data(), sizeof(number_t) * dims);
 
     RedisModuleString* id = argv[1];
 
-    s->ids[s->count] = id;
+    s->ids[s->num_points] = id;
     RedisModule_RetainString(ctx, id);
 
-    s->count++;
+    RedisModule_DictReplace(u->id2sector, id, s);
+    RedisModule_DictReplace(s->id2point, id, point);
+
+    s->num_points++;
 
     // RedisModuleKey *key = RedisModule_OpenKey(ctx,keyname,REDISMODULE_WRITE);
     // struct some_private_struct *data = createMyDataStructure();
@@ -499,9 +510,11 @@ int Cmd_Point_Pos (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModuleString* id = argv[1];
 
     Sector* s = (Sector*) RedisModule_DictGet(u->id2sector, id, NULL);
+    RedisModule_Log(ctx,"warning","sector: %x", s);
     if (!s) return RedisModule_ReplyWithNull(ctx);
 
     number_t* point = (number_t*) RedisModule_DictGet(s->id2point, id, NULL);
+    RedisModule_Log(ctx,"warning","point: %x", point);
     if (!point) return RedisModule_ReplyWithNull(ctx);
 
     uint32_t dims = s->dimensions;

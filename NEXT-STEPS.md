@@ -1,6 +1,15 @@
 ### redis module (c++ code)
-- use inner product for searches. for a small universe, it should be fast enough
+- add custom rax functions to have raxFreeWithCallback and raxHeapSize
+- use linear scan w/ inner product for searches. for a small universe, it should be fast enough
 - force dimensions to be divisible by 16
+
+
+### redis module developer
+- make a redis module watcher which executes some things when <path> has changed:
+  - `module unload <name>` - where <name> is `Path.filename(path,Path.extname(path))`
+  - `module load <path> [arg ...]`
+  - `mc.test` - returns a list of the tests
+  - `mc.test.*` - calls each test and logs the output
 
 
 ### render process

@@ -1,0 +1,59 @@
+#ifndef __REDIS_HACKERY__
+#define __REDIS_HACKERY__
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+
+#include "redismodule.h"
+
+// copy-n-paste from server.h
+typedef void *(*moduleTypeLoadFunc)(struct RedisModuleIO *io, int encver);
+typedef void (*moduleTypeSaveFunc)(struct RedisModuleIO *io, void *value);
+typedef void (*moduleTypeRewriteFunc)(struct RedisModuleIO *io, struct redisObject *key, void *value);
+typedef void (*moduleTypeDigestFunc)(struct RedisModuleDigest *digest, void *value);
+typedef size_t (*moduleTypeMemUsageFunc)(const void *value);
+typedef void (*moduleTypeFreeFunc)(void *value);
+
+typedef struct RedisModuleType {
+    uint64_t id; /* Higher 54 bits of type ID + 10 lower bits of encoding ver. */
+    struct RedisModule *module;
+    moduleTypeLoadFunc rdb_load;
+    moduleTypeSaveFunc rdb_save;
+    moduleTypeRewriteFunc aof_rewrite;
+    moduleTypeMemUsageFunc mem_usage;
+    moduleTypeDigestFunc digest;
+    moduleTypeFreeFunc free;
+    char name[10]; /* 9 bytes name + null term. Charset: A-Z a-z 0-9 _- */
+} moduleType;
+
+typedef struct moduleValue {
+    moduleType *type;
+    void *value;
+} moduleValue;
+
+
+// typedef struct RedisModuleString {
+//     unsigned type:4;
+//     unsigned encoding:4;
+//     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
+//                             * LFU data (least significant 8 bits frequency
+//                             * and most significant 16 bits access time). */
+//     int refcount;
+//     void *ptr;
+// } RedisModuleString;
+
+int ReplyWithError (RedisModuleCtx* ctx, const char* format, ...) {
+  char buffer[256];
+  va_list args;
+  va_start (args, format);
+  vsnprintf (buffer, 255, format, args);
+
+  RedisModule_ReplyWithError(ctx, &buffer[0]);
+
+  va_end (args);
+  return REDISMODULE_OK;
+}
+
+#endif // __REDIS_HACKERY__

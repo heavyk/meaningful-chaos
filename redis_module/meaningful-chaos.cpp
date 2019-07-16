@@ -286,20 +286,29 @@ Universe* GetUniverse (RedisModuleCtx* ctx) {
     return u;
 }
 
-// MC.NEAR <universe_id> <radius> <results> [positions ...]
-// TODO
-
-// MC.UNIVERSE.QUERY <positions[dimensions]> [radius=1] [results=10]
-int Cmd_Universe_Query (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+// MC.NEAR <radius> <results> [positions ...]
+int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if (argc < 2) RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
+
+    double radius;
+    int64_t results;
+    RedisModule_StringToDouble(argv[1], &radius);
+    RedisModule_StringToLongLong(argv[2], &results);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
 
     auto dims = u->dimensions;
-    if (argc < dims + 2) {
-        auto err = RedisModule_CreateStringPrintf(ctx, "ERR arity must be %d: (given: %d)", dims + 2, argc);
-        return RedisModule_ReplyWithError(ctx, RedisModule_StringPtrLen(err, NULL));
+    auto arg_dims = argc - 2;
+    if (arg_dims < 2) {
+        // auto err = RedisModule_CreateStringPrintf(ctx, "ERR at last two dimensions must be given. (given: %d, max: %2)", dims + 2, argc);
+        // return RedisModule_ReplyWithError(ctx, RedisModule_StringPtrLen(err, NULL));
+        return ReplyWithError(ctx, "ERR at last two dimensions must be given. (given: %d, max: %2)", arg_dims, dims);
+    }
+
+    if (arg_dims > dims) {
+        return ReplyWithError(ctx, "ERR you passed %d dimensions. the universe is only %d dimensional.", arg_dims, dims);
     }
 
     VectorXd dquery(dims);
@@ -311,7 +320,12 @@ int Cmd_Universe_Query (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 
     Vec query(dquery.cast<number_t>());
 
-    // for ()
+    // in the future, what I could have to have instead of a priority queue, I can store
+    // the largest and smallest values. if a new value is greater than the top or
+    // greater than the bottom, do something with the value.
+    //
+    // the elements between the top and bottom would always be unsorted, so sort the vector
+    // before returning it, but it would improve insertion times on a large dataset (sometimes).
 
 
     return REDISMODULE_ERR; // @Incomplete
@@ -319,8 +333,8 @@ int Cmd_Universe_Query (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 
 // MC.POINT.CREATE <point_id> [pos: float(dimensions)]
 int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    RedisModule_AutoMemory(ctx);
     if (argc < 2) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -365,8 +379,8 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
 // MC.POINT.POS <point_id>
 int Cmd_Point_Pos (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    RedisModule_AutoMemory(ctx);
     if (argc < 2) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -413,7 +427,7 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         .version = REDISMODULE_TYPE_METHOD_VERSION,
         .rdb_load = MC_UniverseRdbLoad,
         .rdb_save = MC_UniverseRdbSave,
-        .aof_rewrite = MC_UniverseAofRewrite,
+        // .aof_rewrite = MC_UniverseAofRewrite, // disabled. it's not used.
         .free = MC_UniverseFree
     };
 
@@ -422,16 +436,12 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 
     // @Incomplete: select database from argv
 
-    // if (RedisModule_CreateCommand(ctx,"mc.universe.create",
-    //     Cmd_Universe_Create,"write deny-oom",1,1,1) == REDISMODULE_ERR)
-    //     return REDISMODULE_ERR;
-
-    if (RedisModule_CreateCommand(ctx,"mc.universe.query",
-        Cmd_Universe_Query,"readonly",1,1,1) == REDISMODULE_ERR)
+    if (RedisModule_CreateCommand(ctx,"mc.near",
+        Cmd_Near,"readonly",1,1,1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx,"mc.point.create",
-        Cmd_Point_Create,"readonly",1,1,1) == REDISMODULE_ERR)
+        Cmd_Point_Create,"write deny-oom",1,1,1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx,"mc.point.pos",

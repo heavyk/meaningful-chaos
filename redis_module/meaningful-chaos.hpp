@@ -1,5 +1,5 @@
-#ifndef __MEANINGFUL_CHAOS__
-#define __MEANINGFUL_CHAOS__
+#ifndef __MEANINGFUL_CHAOS_H__
+#define __MEANINGFUL_CHAOS_H__
 
 #include "redismodule.h"
 #include "redishackery.h"

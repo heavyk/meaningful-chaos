@@ -1,4 +1,5 @@
-#include "redis_test.h"
+#include "redismodule.h"
+#include "redistest.h"
 
 // ------------------------------- Test units -------------------------------
 
@@ -84,10 +85,6 @@ int TestIt(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
     RedisModuleCallReply *reply;
 
-    // Make sure the DB is empty before to proceed.
-    TEST("dbsize","");
-    if (!TestAssertIntegerReply(ctx,reply,0)) goto fail;
-
     TEST("ping","");
     if (!TestAssertStringReply(ctx,reply,"PONG",4)) goto fail;
 
@@ -107,30 +104,33 @@ int TestIt(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     return REDISMODULE_OK;
 
 fail:
-    RedisModule_ReplyWithSimpleString(ctx,
+    RedisModule_ReplyWithError(ctx,
         "SOME TEST NOT PASSED! Check server logs");
-    return REDISMODULE_OK;
+    return REDISMODULE_ERR;
 }
 
-void ADD_TEST_COMMANDS (RedisModuleCtx *ctx) {
+int ADD_TEST_COMMANDS (RedisModuleCtx *ctx) {
+    RedisModule_Log(ctx,"warning","test commands enabled");
 
     if (RedisModule_CreateCommand(ctx, "test.call",
-        TestIt,"readonly",1,1,1) == REDISMODULE_ERR)
+        TestCall,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "test.string.append",
-        TestIt,"readonly",1,1,1) == REDISMODULE_ERR)
+        TestStringAppend,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "test.string.append.am",
-        TestIt,"readonly",1,1,1) == REDISMODULE_ERR)
+        TestStringAppendAM,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    if (RedisModule_CreateCommand(ctx, "test.printf",
-        TestIt,"readonly",1,1,1) == REDISMODULE_ERR)
+    if (RedisModule_CreateCommand(ctx, "test.string.printf",
+        TestStringPrintf,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "test.it",
-        TestIt,"readonly",1,1,1) == REDISMODULE_ERR)
+        TestIt,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
+
+    return REDISMODULE_OK;
 }

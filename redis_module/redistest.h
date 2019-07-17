@@ -1,3 +1,7 @@
+#ifndef __REDISTEST_H__
+#define __REDISTEST_H__
+
+#include <string.h>
 
 #define TEST(name,...) \
     do { \
@@ -6,7 +10,7 @@
     } while (0);
 
 // Return true if the reply and the C null term string matches.
-int TestMatchReply(RedisModuleCallReply *reply, const char *str) {
+static int TestMatchReply(RedisModuleCallReply *reply, const char *str) {
     RedisModuleString *mystr;
     mystr = RedisModule_CreateStringFromCallReply(reply);
     if (!mystr) return 0;
@@ -18,7 +22,7 @@ int TestMatchReply(RedisModuleCallReply *reply, const char *str) {
 
 // Return 1 if the reply matches the specified string, otherwise log errors
 // in the server log and return 0.
-int TestAssertStringReply(RedisModuleCtx *ctx, RedisModuleCallReply *reply, const char *str, size_t len) {
+static int TestAssertStringReply(RedisModuleCtx *ctx, RedisModuleCallReply *reply, const char *str, size_t len) {
     RedisModuleString *mystr, *expected;
 
     if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_STRING) {
@@ -41,7 +45,7 @@ int TestAssertStringReply(RedisModuleCtx *ctx, RedisModuleCallReply *reply, cons
 
 // Return 1 if the reply matches the specified integer, otherwise log errors
 // in the server log and return 0.
-int TestAssertIntegerReply(RedisModuleCtx *ctx, RedisModuleCallReply *reply, long long expected) {
+static int TestAssertIntegerReply(RedisModuleCtx *ctx, RedisModuleCallReply *reply, long long expected) {
     if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_INTEGER) {
         RedisModule_Log(ctx,"warning","Unexpected reply type %d",
             RedisModule_CallReplyType(reply));
@@ -56,3 +60,10 @@ int TestAssertIntegerReply(RedisModuleCtx *ctx, RedisModuleCallReply *reply, lon
     }
     return 1;
 }
+
+// define this function
+typedef struct RedisModuleCtx RedisModuleCtx;
+// int ADD_TEST_COMMANDS (RedisModuleCtx *ctx) __attribute__((unused));
+int ADD_TEST_COMMANDS (RedisModuleCtx *ctx);
+
+#endif // __REDISTEST_H__

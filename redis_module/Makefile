@@ -1,7 +1,15 @@
+MC_OBJ = meaningful-chaos.o
+
 DEBUGFLAGS = -g -ggdb -O2
 ifeq ($(DEBUG), 1)
 	DEBUGFLAGS = -g -ggdb -O0
 endif
+
+ifeq ($(TEST), 1)
+	DEBUGFLAGS += -DREDIS_TESTS
+	HEADERS += tests.hpp
+endif
+
 
 # find the OS
 CXX = g++-9 # TODO: find the best gcc if CXX isn't set
@@ -23,19 +31,25 @@ endif
 
 export
 
+# always relink it (so that it reloads)
+.PHONY: meaningful-chaos.so
+
 all: meaningful-chaos.so
 
-gmp_test: gmp_test.cpp external/real.hpp $(DEPS)
+gmp_test: gmp_test.cpp external/real.hpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -o $@ $< -lgmp -lgmpxx -lmpfr
 
-meaningful-chaos.so: meaningful-chaos.o $(DEPS)
+meaningful-chaos.o: meaningful-chaos.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+meaningful-chaos.so: $(MC_OBJ)
 	$(LD) $^ -o $@ $(SHOBJ_LDFLAGS) $(LDFLAGS)
 
-redis_date_module.so: date.o $(DEPS)
+redis_date_module.so: date.o
 	$(LD) $^ -o $@ $(SHOBJ_LDFLAGS) $(LDFLAGS)
 
 clean:
-	$(RM) meaningful-chaos.o meaningful-chaos.so $(DEPS)
+	$(RM) meaningful-chaos.o meaningful-chaos.so
 	$(RM) -rf build/
 	$(RM) -rf gmp_test
 

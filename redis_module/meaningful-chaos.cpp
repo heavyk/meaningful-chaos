@@ -417,12 +417,6 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     if (RedisModule_Init(ctx, "meaningful-chaos", 1, REDISMODULE_APIVER_1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-#ifdef USE_DOUBLE
-    RedisModule_Log(ctx,"warning","number_t is double");
-#else
-    RedisModule_Log(ctx,"warning","number_t is float");
-#endif
-
     RedisModuleTypeMethods tm = {
         .version = REDISMODULE_TYPE_METHOD_VERSION,
         .rdb_load = MC_UniverseRdbLoad,
@@ -434,7 +428,12 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     Universe_Data = RedisModule_CreateDataType(ctx, "mc-uverse", RDB_VERSION, &tm);
     if (Universe_Data == NULL) return REDISMODULE_ERR;
 
-    // @Incomplete: select database from argv
+    if (argc > 1) {
+        int64_t db;
+        RedisModule_StringToLongLong(argv[1], &db);
+        RedisModule_SelectDb(ctx, (int) db);
+        RedisModule_Log(ctx,"info","selected database: %d", (int) db);
+    }
 
     if (RedisModule_CreateCommand(ctx,"mc.near",
         Cmd_Near,"readonly",1,1,1) == REDISMODULE_ERR)
@@ -449,11 +448,13 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         return REDISMODULE_ERR;
 
 
-#ifdef TEST
-    ADD_TEST_COMMANDS(ctx);
-#endif
-
+#ifdef REDIS_TESTS
+    RedisModule_Log(ctx,"warning","add tests");
+    return ADD_TEST_COMMANDS(ctx);
+#else
+    RedisModule_Log(ctx,"warning","no tests");
     return REDISMODULE_OK;
+#endif
 }
 
 #ifdef __cplusplus

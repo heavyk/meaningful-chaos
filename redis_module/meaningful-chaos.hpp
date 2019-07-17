@@ -4,6 +4,10 @@
 #include "redismodule.h"
 #include "redishackery.h"
 
+#ifdef REDIS_TESTS
+#include "tests.hpp"
+#endif
+
 // increment when changing the rdb data layout
 #define RDB_VERSION 1
 

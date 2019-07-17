@@ -30,6 +30,7 @@
     "webpack-rollup-loader": "^0.8.0"
   },
   "dependencies": {
+    "chokidar": "^3.0.2",
     "execa": "^1.0.0",
     "got": "^9.6.0",
     "ioredis": "^4.10.0",

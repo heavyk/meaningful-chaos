@@ -26,7 +26,9 @@ function start_server () {
     const compiler = webpack(config)
     const server = new WebpackDevServer(compiler, config.devServer)
 
-    redis.start().then(() => {
+    redis.start().then((started) => {
+      console.log('redis started!! ', started)
+      redis.restarter('./redis_module/meaningful-chaos.so')
       if (!--i) resolve(server)
     })
 
@@ -59,13 +61,16 @@ function createWindow () {
 
   start_server().then(() => {
     main_window.loadURL('http://localhost:' + listen_port + '/')
-    contents.send('redis', redis.sock)
-    // contents.openDevTools()
   })
 
   main_window.on('closed', () => {
     main_window = null
     contents = null
+  })
+
+  contents.on('did-finish-load', () => {
+    contents.send('redis', redis.sock)
+    // contents.openDevTools()
   })
 
   // setTimeout(() => {

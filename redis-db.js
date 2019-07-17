@@ -13,6 +13,7 @@ async function ensure_installation () {
   //   https://github.com/tporadowski/redis
   async function extract_tar (filename) {
     log.info('extract tar')
+    // TODO: use fs-extra (for windows support?)
     return exec('tar', ['xzpf', filename, '--strip-components=1', '-C', '.'], { cwd: redis_dir })
     .then(({ stdout }) => {
       log.info('tar finished!', stdout)
@@ -59,6 +60,7 @@ async function ensure_installation () {
 var _db
 const redis = {
   start, stop, kill, pid,
+  restarter,
   dir: Path.join(__dirname, 'redis'),
   server_bin: Path.join(__dirname, 'redis', 'src', 'redis-server'),
   sock: tmp_dir + '/meaningful_chaos_redis.sock',
@@ -108,20 +110,22 @@ async function start () {
   await ensure_installation()
   await stop()
 
-  Fs.unlink(redis.logfile, ()=>{}) // truncate log?
+  // Fs.unlink(redis.logfile, ()=>{}) // truncate log?
 
   await write_file(redis.conffile, redis.conf.join('\n'))
   await exec(redis.server_bin, [redis.conffile], { detached: true })
 
-  let tries = 10
+  // wait up to ~2 seconds for it to start
+  let tries = 20, _pid = 0
   do {
-    await sleep(50) // give it a little time to start
-    log.info('...')
-  } while (--tries && !(await pid()))
+    await sleep(100) // give it a little time to start
+    // log.info('...')
+  } while (--tries && !(_pid = await pid()))
   // do await sleep(50) // give it a little time to start
   // while (!(await pid()))
 
-  log.info('redis-cli -s '+redis.sock)
+  // log.info('redis-cli -s '+redis.sock)
+  return _pid
 }
 
 async function pid () {
@@ -137,6 +141,16 @@ async function pid () {
   return p * 1
 }
 
+async function restarter (path) {
+  return require('chokidar')
+  .watch(path, { ignoreInitial: true })
+  .on('all', async (event, path) => {
+    if (event == 'unlink') return
+    await sleep(100) // sometimes gives image not found.
+    await start()
+  })
+}
+
 async function kill (pid_ = -1) {
   if (!~pid_) pid_ = await pid()
   log.info('killing:', pid_)
@@ -146,9 +160,10 @@ async function kill (pid_ = -1) {
 async function stop () {
   if (await exists(redis.pidfile)) {
     const pid_ = await pid()
-    while (await is_running(pid_)) {
+    let running
+    while (running = await is_running(pid_)) {
+      log.info('killing: '+pid_ + ' running:'+running)
       await kill(pid_)
-      log.info('killing: '+pid_)
       await sleep(500)
     }
 
@@ -167,7 +182,7 @@ async function is_running (query) {
   }
 
   const { stdout } = await exec.shell(cmd)
-  return stdout.toLowerCase().indexOf(query) > -1
+  return !!~stdout.toLowerCase().indexOf(query)
 }
 
 // TODO: move out to a lib

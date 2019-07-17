@@ -11,7 +11,7 @@ var db
 
 electron.ipc.on('redis', (event, sock) => {
   // connect to redis
-  db = new electron.Redis(sock)
+  db = window.db = new electron.Redis(sock)
 })
 
 

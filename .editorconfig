@@ -1,6 +1,6 @@
 root = 1
 
-[**.{c,cc,cpp,h}]
+[**.{c,cc,cpp,h,hpp}]
 indent_style = space
 indent_size = 4
 

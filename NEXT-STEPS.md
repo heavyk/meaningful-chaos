@@ -1,15 +1,32 @@
+### multiple universes?
+it may be a future improvement to have universe's listen to a grid, so that let's say I'm over at a friend's house and I want to use her computer, well, my universe can also recognise events in her grid (camera) at the same time.. certainly worth experimenting with.
+
+for now this is all a single universe thing. also, I don't believe I will be doing custom types for each of these yet, until I need to. all of the parts of the universe will exist inside of the universe. moments will be stored inside of hashes
+
 ### redis module (c++ code)
+- essentials:
+  - mc.grid.create <grid_id> <width> <height>
+  - mc.grid.event <grid_id> <timestamp> <event>
+  - mc.grid.moment <grid_id> <timestamp> <data>
+    - adds the latest frame to be processed. can be accompanied with an event.
+    - if an event had occurred, then begin the process to search for a sequence
+    - run all sequences on the grid and fire any events found
 - add custom rax functions to have raxFreeWithCallback and raxHeapSize
 - use linear scan w/ inner product for searches. for a small universe, it should be fast enough
 - force dimensions to be divisible by 16
+- implement the tests instead with `catch` and just connect with hiredis (or ioredis)
 
+### how the grid works
+
+when a grid receives a moment, it accumulates all of the values into its data, for all overflows, this is where a sequence will begin.
+
+the values grid + the overflow grid will then be processed, calling each sequence on it in the universe. each sequence is associated with an event_id
 
 ### redis module developer
 - make a redis module watcher which executes some things when <path> has changed:
-  - `module unload <name>` - where <name> is `Path.filename(path,Path.extname(path))`
-  - `module load <path> [arg ...]`
-  - `mc.test` - returns a list of the tests
-  - `mc.test.*` - calls each test and logs the output
+  - `mc.tests` - returns a list of the tests
+- after reload, calls each checked test and logs the output
+- ability to see server log
 
 
 ### render process

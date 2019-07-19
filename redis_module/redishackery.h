@@ -86,4 +86,22 @@ int ReplyWithError (RedisModuleCtx* ctx, const char* format, ...) {
   return REDISMODULE_OK;
 }
 
+#define BEGIN_ARRAY_REPLY() \
+    size_t arrc = 0; \
+    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+
+#define END_ARRAY_REPLY() RedisModule_ReplySetArrayLength(ctx, arrc)
+
+#define ARRAY_REPLY_STR_INT(k, v) do { \
+    RedisModule_ReplyWithSimpleString(ctx, k); \
+    RedisModule_ReplyWithLongLong(ctx, v); \
+    arrc += 2; \
+} while (0)
+
+#define ARRAY_REPLY_STR_DOUBLE(k, v) do { \
+    RedisModule_ReplyWithSimpleString(ctx, k); \
+    RedisModule_ReplyWithDouble(ctx, v); \
+    arrc += 2; \
+} while (0)
+
 #endif // __REDIS_HACKERY__

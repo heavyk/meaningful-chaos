@@ -43,15 +43,24 @@ Sector* Sector_create (uint32_t dimensions, uint32_t max_points) {
     return s;
 }
 
+Sector* Sector_create (Universe* u) {
+    Sector* s = Sector_create(u->dimensions, u->max_points);
+    if (!s) return NULL;
+    s->universe = u;
+    return s;
+}
 
-Point* Point_create (RedisModuleString* id, Sector* sector, number_t* vector) {
+
+Point* Point_create (Sector* sector, RedisModuleString* id, number_t* vector) {
     Point* p = (Point*) RedisModule_Alloc(sizeof(Point));
     if (!p) return NULL;
     p->id = id;
     p->sector = sector;
     p->vector = vector;
 
-    sector->_points[++sector->num_points] = p;
+    sector->_points[sector->num_points] = p;
+    sector->num_points++;
+    sector->universe->num_points++;
     return p;
 }
 
@@ -77,7 +86,7 @@ Sector* Universe_ensure_space (Universe* u, uint64_t more_points) {
     Sector* last = u->sectors_head;
     uint64_t needed_points = u->num_points + more_points;
     while (u->max_points < needed_points || last->dimensions < u->dimensions) {
-        Sector* s = Sector_create(u->dimensions, u->sector_points);
+        Sector* s = Sector_create(u);
 
         if (!last) {
             // universe does not have any sectors yet
@@ -116,6 +125,7 @@ void MC_UniverseRdbSave (RedisModuleIO *rdb, void *value) {
         auto dimensions = s->dimensions;
         for (uint32_t j = 0; j < num_points; j++) {
             Point* p = s->_points[j];
+            assert(p);
             RedisModule_SaveString(rdb, p->id);
             assert(&s->vectors[j*dimensions] == p->vector);
             for (uint32_t k = 0; k < dimensions; k++) {
@@ -155,16 +165,21 @@ void* MC_UniverseRdbLoad (RedisModuleIO *rdb, int encver) {
         int64_t dimensions = RedisModule_LoadUnsigned(rdb);
         int64_t flags = RedisModule_LoadUnsigned(rdb);
         s = Sector_create(dimensions, max_points);
+        if (!s) {
+            RedisModule_LogIOError(rdb,"warning","Can't create sector with %d dimesionns and %d max_points", dimensions, max_points);
+            return NULL;
+        }
         if (prev) prev->next = s;
         else u->sectors_head = s;
         s->flags = flags;
+        s->universe = u; // when creating the sector with non-universe sizes, set the universe ptr
 
         for (uint32_t j = 0; j < num_points; j++) {
             size_t offset = j * dimensions;
             auto id = RedisModule_LoadString(rdb);
-            Point* p = Point_create(id, s, &s->vectors[offset]);
+            Point* p = Point_create(s, id, &s->vectors[offset]);
             assert(p->vector == &s->vectors[offset]);
-            RedisModule_DictSet(u->points, id, (void*) p);
+            RedisModule_DictReplace(u->points, id, (void*) p);
             for (uint32_t k = 0; k < dimensions; k++) {
 #ifdef USE_DOUBLE
                 s->vectors[offset+k] = RedisModule_LoadDouble(rdb);
@@ -274,7 +289,7 @@ int Cmd_Stats (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (!u) return REDISMODULE_OK;
 
     size_t len = 0;
-    const char* key;
+    const char* key = "*";
     if (argc > 1) key = RedisModule_StringPtrLen(argv[1], &len);
 
     BEGIN_ARRAY_REPLY();
@@ -299,9 +314,12 @@ int Cmd_Config_Get (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (!u) return REDISMODULE_OK;
 
     size_t len = 0;
-    const char* key = RedisModule_StringPtrLen(argv[1], &len);
+    const char* key = argc == 2 ? RedisModule_StringPtrLen(argv[1], &len) : "*";
     if (len == 0 || strncmp(key, "*", len) == 0) {
-        // TODO: list all of them
+        BEGIN_ARRAY_REPLY();
+        ARRAY_REPLY_OBJ_INT(u, dimensions);
+        ARRAY_REPLY_OBJ_INT(u, sector_points);
+        END_ARRAY_REPLY();
     } else {
         if (strncmp(key, "dimensions", len) == 0) {
             RedisModule_ReplyWithLongLong(ctx, u->dimensions);
@@ -345,7 +363,7 @@ int Cmd_Config_Set (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.NEAR <radius> <results> [positions ...]
 int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 2) RedisModule_WrongArity(ctx);
-    RedisModule_AutoMemory(ctx);
+    // RedisModule_AutoMemory(ctx);
 
     double radius;
     int64_t results;
@@ -374,7 +392,7 @@ int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_StringToDouble(argv[i + 2], &query_ptr[i]);
     }
 
-    Vec query(dquery.cast<number_t>());
+    // Vec query(dquery.cast<number_t>());
 
     // in the future, what I could have to have instead of a priority queue, I can store
     // the largest and smallest values. if a new value is greater than the top or
@@ -390,15 +408,14 @@ int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.POINT.CREATE <point_id> [pos: float(dimensions)]
 int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 2) return RedisModule_WrongArity(ctx);
-    RedisModule_AutoMemory(ctx);
+    // RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
 
     auto dims = u->dimensions;
     if (argc > dims + 2) {
-        auto err = RedisModule_CreateStringPrintf(ctx, "ERR arity must be <= %d: (given: %d)", dims + 2, argc);
-        return RedisModule_ReplyWithError(ctx, RedisModule_StringPtrLen(err, NULL));
+        return ReplyWithError(ctx, "ERR arity must be <= %d: (given: %d)", dims + 2, argc);
     }
 
     Sector* s = Universe_ensure_space(u, 1);
@@ -417,17 +434,28 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
             vector[i] = (number_t) value;
 #endif
         } else {
+            // the distribution on this sucks!
+            // very often I'll get (out of 124 dimensions), 20 zeros.
             vector[i] = udist(rande);
         }
     }
 
-    RedisModuleString* id = argv[1];
-    RedisModule_RetainString(ctx, id);
-    Point* point = Point_create(id, s, vector);
-    RedisModule_DictReplace(u->points, id, point);
+    const bool overwrite = false;
 
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    RedisModule_ReplicateVerbatim(ctx);
+    // RedisModule_Log(ctx,"warning","string: type = %d, refcount = %d, enctype = %d\n", argv[1]->type, argv[1]->refcount, argv[1]->encoding);
+
+    RedisModuleString* id = RedisModule_CreateStringFromString(NULL, argv[1]);
+    Point* point = (Point*) RedisModule_DictGet(u->points, id, NULL);
+    // RedisModule_RetainString(ctx, id);
+
+    if (point && !overwrite) {
+        RedisModule_ReplyWithError(ctx, "point already exists");
+    } else {
+        point = Point_create(s, id, vector);
+        RedisModule_DictReplace(u->points, id, point);
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+        RedisModule_ReplicateVerbatim(ctx);
+    }
 
     return REDISMODULE_OK;
 }
@@ -435,7 +463,7 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.POINT.POS <point_id>
 int Cmd_Point_Pos (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 2) return RedisModule_WrongArity(ctx);
-    RedisModule_AutoMemory(ctx);
+    // RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -491,15 +519,15 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     }
 
     if (RedisModule_CreateCommand(ctx,"mc.near",
-        Cmd_Near,"readonly",1,1,1) == REDISMODULE_ERR)
+        Cmd_Near,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx,"mc.point.create",
-        Cmd_Point_Create,"write deny-oom",1,1,1) == REDISMODULE_ERR)
+        Cmd_Point_Create,"write deny-oom",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx,"mc.point.pos",
-        Cmd_Point_Pos,"readonly",1,1,1) == REDISMODULE_ERR)
+        Cmd_Point_Pos,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx,"mc.stats",

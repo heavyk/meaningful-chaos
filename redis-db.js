@@ -66,6 +66,8 @@ const redis = {
   sock: tmp_dir + '/meaningful_chaos_redis.sock',
   pidfile: tmp_dir + '/meaningful_chaos_redis.pid',
   logfile: tmp_dir + '/meaningful_chaos_redis.log',
+  stdout: tmp_dir + '/meaningful_chaos_stdout.log',
+  stderr: tmp_dir + '/meaningful_chaos_stderr.log',
   conffile: Path.join(__dirname, 'redis', 'meaningful-chaos.conf'),
   get db () {
     if (!_db) {
@@ -85,7 +87,7 @@ redis.conf = [
   'unixsocket ' + redis.sock,
   'protected-mode yes',
   'timeout 0',
-  'daemonize yes',
+  // 'daemonize yes', // disabled to allow easier debugging
   'supervised no',
   'pidfile ' + redis.pidfile,
   // 'loglevel notice',
@@ -113,7 +115,17 @@ async function start () {
   // Fs.unlink(redis.logfile, ()=>{}) // truncate log?
 
   await write_file(redis.conffile, redis.conf.join('\n'))
-  await exec(redis.server_bin, [redis.conffile], { detached: true })
+  // await exec(redis.server_bin, [redis.conffile], { detached: true })
+  const { spawn } = require('child_process')
+  const out = Fs.openSync(redis.stdout, 'a')
+  const err = Fs.openSync(redis.stderr, 'a')
+  const sp = spawn(redis.server_bin, [redis.conffile], {
+    detached: true,
+    stdio: ['ignore', out, err]
+  })
+
+  // to fully let it be independent of node's process:
+  // sp.unref()
 
   // wait up to ~2 seconds for it to start
   let tries = 20, _pid = 0
@@ -121,8 +133,6 @@ async function start () {
     await sleep(100) // give it a little time to start
     // log.info('...')
   } while (--tries && !(_pid = await pid()))
-  // do await sleep(50) // give it a little time to start
-  // while (!(await pid()))
 
   // log.info('redis-cli -s '+redis.sock)
   return _pid
@@ -216,7 +226,7 @@ if (!module.parent) {
 // this should go in electron!!
 process.on('exit', async () => {
   await stop()
-  redis.tail.unwatch()
+  if (redis.tail) redis.tail.unwatch()
 })
 
 module.exports = redis

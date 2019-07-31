@@ -24,11 +24,32 @@ static RedisModuleString* UV;
 
 
 
+typedef struct Sequence Sequence;
+typedef struct Grid Grid;
+typedef struct Action Action;
 typedef struct Point Point;
 typedef struct Sector Sector;
 typedef struct Universe Universe;
 
 // should these become classes?
+struct Moment {
+    RedisModuleString* action_id;
+    RedisModuleString* gdata; // grid coming from js.
+    double ts; // timestamp for event
+};
+
+struct Grid {
+    RedisModuleString* id;
+    char* data;
+    uint16_t width;
+    uint16_t height;
+};
+
+struct Action {
+    RedisModuleString* id; // eg. keydown-k or open-steam
+    RedisModuleString* js; // the textual representation of the js function to be called to make this action
+};
+
 struct Point {
     RedisModuleString* id;
     Sector* sector;
@@ -44,6 +65,7 @@ struct Sector {
     number_t* vectors;
     Point** _points;
 
+    Universe* universe; // pointer to the universe it belongs to
     Sector* next;
     // Sector* prev;
 };

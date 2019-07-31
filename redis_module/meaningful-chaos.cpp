@@ -2,30 +2,41 @@
 #include "redishackery.h"
 
 #include "meaningful-chaos.hpp"
+#include <assert.h>
+#include <limits.h>
 
-#include <Eigen/Dense>
-#include <random>
+// #include <Eigen/Dense>
+// using namespace Eigen;
+// typedef Matrix<number_t, Dynamic, 1, ColMajor> Vec;
+// typedef Matrix<double, Dynamic, 1, ColMajor> d_Vec;
 
-using namespace Eigen;
-
-
-
-
-std::uniform_real_distribution<double> udist(-1000, 1000);
-std::default_random_engine rande;
+float random_float (float a, float b) {
+    double random = ((double) rand()) / (double) RAND_MAX;
+    double diff = b - a;
+    double r = random * diff;
+    return (float)(a + r);
+}
 
 
 static RedisModuleType *Universe_Data;
 // static RedisModuleType *Point_Data; // not yet used
 
-typedef Matrix<number_t, Dynamic, 1, ColMajor> Vec;
-typedef Matrix<double, Dynamic, 1, ColMajor> d_Vec;
 
-// for now, unused...
-// typedef struct {
-//     RedisModuleString* id; // textual key of the concept
-//     uint16_t flags;
-// } Concept;
+Grid* Grid_create (RedisModuleString* id, uint16_t width, uint16_t height) {
+    Grid* g = (Grid*) RedisModule_Alloc(sizeof(*g));
+    if (!g) return NULL;
+
+    g->id = id;
+    g->width = width;
+    g->height = height;
+    g->data = (char*) RedisModule_Calloc(width * height, 1);
+    if (!g->data) {
+        RedisModule_Free(g);
+        return NULL;
+    }
+
+    return g;
+}
 
 
 Sector* Sector_create (uint32_t dimensions, uint32_t max_points) {
@@ -76,6 +87,7 @@ Universe* Universe_create (uint16_t dimensions = 128, uint32_t sector_points = 1
     u->dimensions = dimensions;
     u->sector_points = sector_points;
 
+    u->sectors_head = u->sectors_tail = NULL;
     u->points = RedisModule_CreateDict(NULL);
 
     return u;
@@ -88,10 +100,11 @@ Sector* Universe_ensure_space (Universe* u, uint64_t more_points) {
     while (u->max_points < needed_points || last->dimensions < u->dimensions) {
         Sector* s = Sector_create(u);
 
-        if (!last) {
+        if (last == NULL) {
             // universe does not have any sectors yet
             u->sectors_head = last = s;
         } else {
+            last = s;
             // traverse all of the sectors and set the next to the newly created one.
             // simplify this by storing the prev/tail??
             while ((last = last->next)) {}
@@ -113,7 +126,8 @@ void MC_UniverseRdbSave (RedisModuleIO *rdb, void *value) {
     // max_points is calculatable
     RedisModule_SaveUnsigned(rdb, u->sector_points);
     RedisModule_SaveUnsigned(rdb, u->num_sectors);
-    Sector* s = (Sector*) u->sectors_head;
+    Sector* s = u->sectors_head;
+    uint32_t num_sectors = 0;
     while (s) {
         // @Efficiency: save num_points/max_points together
         RedisModule_SaveUnsigned(rdb, s->num_points);
@@ -138,8 +152,16 @@ void MC_UniverseRdbSave (RedisModuleIO *rdb, void *value) {
         }
 
         s = s->next;
+        num_sectors++;
     }
 
+#ifndef DEBUG
+    if (num_sectors == u->num_sectors) {
+        RedisModule_LogIOError(rdb,"warning","%d sectors were saved, but the universe only has %d sectors", num_sectors, u->num_sectors);
+    }
+#else
+    assert(num_sectors == u->num_sectors);
+#endif
 }
 
 void* MC_UniverseRdbLoad (RedisModuleIO *rdb, int encver) {
@@ -160,10 +182,10 @@ void* MC_UniverseRdbLoad (RedisModuleIO *rdb, int encver) {
     Sector* prev = NULL;
     Sector* s = NULL;
     for (uint32_t i = 0; i < num_sectors; i++) {
-        int64_t num_points = RedisModule_LoadSigned(rdb);
-        int64_t max_points = RedisModule_LoadSigned(rdb);
-        int64_t dimensions = RedisModule_LoadUnsigned(rdb);
-        int64_t flags = RedisModule_LoadUnsigned(rdb);
+        uint64_t num_points = RedisModule_LoadUnsigned(rdb);
+        uint64_t max_points = RedisModule_LoadUnsigned(rdb);
+        uint64_t dimensions = RedisModule_LoadUnsigned(rdb);
+        uint64_t flags = RedisModule_LoadUnsigned(rdb);
         s = Sector_create(dimensions, max_points);
         if (!s) {
             RedisModule_LogIOError(rdb,"warning","Can't create sector with %d dimesionns and %d max_points", dimensions, max_points);
@@ -189,9 +211,13 @@ void* MC_UniverseRdbLoad (RedisModuleIO *rdb, int encver) {
             }
         }
 
+#ifndef DEBUG
         if (s->num_points != num_points) {
             RedisModule_LogIOError(rdb,"warning","sector was saved with %d points, yet only %d were loaded", num_points, s->num_points);
         }
+#else
+        assert(s->num_points != num_points);
+#endif
     }
 
     u->sectors_tail = s;
@@ -255,6 +281,17 @@ size_t MC_UniverseMemUsage (const void *value) {
     return bytes;
 }
 
+// unused
+// void MC_UniverseDigest (RedisModuleDigest *md, void *value) {
+//     Universe* u = (Universe*) value;
+//     Sector* s = u->sectors_head;
+//     while (s) {
+//         // sum the pieces
+//
+//         s = s->next;
+//     }
+// }
+
 Universe* GetUniverse (RedisModuleCtx* ctx) {
     // get universe key
     UV = RedisModule_CreateString(ctx, UV_STR, strlen(UV_STR));
@@ -283,7 +320,6 @@ Universe* GetUniverse (RedisModuleCtx* ctx) {
 // MC.STATS [field]
 int Cmd_Stats (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 1 || argc > 2) RedisModule_WrongArity(ctx);
-    // RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -308,7 +344,6 @@ int Cmd_Stats (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.CONFIG.GET [field]
 int Cmd_Config_Get (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc > 2) RedisModule_WrongArity(ctx);
-    // RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -335,7 +370,6 @@ int Cmd_Config_Get (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.CONFIG.SET <field> <value>
 int Cmd_Config_Set (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc > 3 || argc < 3) RedisModule_WrongArity(ctx);
-    // RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -363,7 +397,6 @@ int Cmd_Config_Set (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.NEAR <radius> <results> [positions ...]
 int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 2) RedisModule_WrongArity(ctx);
-    // RedisModule_AutoMemory(ctx);
 
     double radius;
     int64_t results;
@@ -385,8 +418,9 @@ int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return ReplyWithError(ctx, "ERR you passed %d dimensions. the universe is only %d dimensional.", arg_dims, dims);
     }
 
-    VectorXd dquery(dims);
-    double* query_ptr = dquery.data();
+    // VectorXd dquery(dims);
+    // double* query_ptr = dquery.data();
+    double* query_ptr = (double*) RedisModule_Calloc(sizeof(double), dims);
 
     for (int i = 0; i < dims; i++) {
         RedisModule_StringToDouble(argv[i + 2], &query_ptr[i]);
@@ -401,6 +435,7 @@ int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // the elements between the top and bottom would always be unsorted, so sort the vector
     // before returning it, but it would improve insertion times on a large dataset (sometimes).
 
+    RedisModule_Free(query_ptr);
 
     return REDISMODULE_ERR; // @Incomplete
 }
@@ -408,7 +443,6 @@ int Cmd_Near (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.POINT.CREATE <point_id> [pos: float(dimensions)]
 int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 2) return RedisModule_WrongArity(ctx);
-    // RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -434,9 +468,7 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
             vector[i] = (number_t) value;
 #endif
         } else {
-            // the distribution on this sucks!
-            // very often I'll get (out of 124 dimensions), 20 zeros.
-            vector[i] = udist(rande);
+            vector[i] = random_float(-1000, 1000);
         }
     }
 
@@ -444,14 +476,16 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     // RedisModule_Log(ctx,"warning","string: type = %d, refcount = %d, enctype = %d\n", argv[1]->type, argv[1]->refcount, argv[1]->encoding);
 
+    // RedisModuleString* id = argv[1]; //RedisModule_CreateStringFromString(NULL, argv[1]);
     RedisModuleString* id = RedisModule_CreateStringFromString(NULL, argv[1]);
     Point* point = (Point*) RedisModule_DictGet(u->points, id, NULL);
-    // RedisModule_RetainString(ctx, id);
 
     if (point && !overwrite) {
+        RedisModule_FreeString(ctx, id);
         RedisModule_ReplyWithError(ctx, "point already exists");
     } else {
         point = Point_create(s, id, vector);
+        RedisModule_RetainString(NULL, id);
         RedisModule_DictReplace(u->points, id, point);
         RedisModule_ReplyWithSimpleString(ctx, "OK");
         RedisModule_ReplicateVerbatim(ctx);
@@ -463,7 +497,6 @@ int Cmd_Point_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 // MC.POINT.POS <point_id>
 int Cmd_Point_Pos (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 2) return RedisModule_WrongArity(ctx);
-    // RedisModule_AutoMemory(ctx);
 
     Universe* u = GetUniverse(ctx);
     if (!u) return REDISMODULE_OK;
@@ -479,6 +512,26 @@ int Cmd_Point_Pos (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     for (uint32_t i = 0; i < dims; i++) {
         RedisModule_ReplyWithDouble(ctx, (double) p->vector[i]);
     }
+
+    return REDISMODULE_OK;
+}
+
+// MC.GRID.CREATE <grid_id> <width> <height>
+int Cmd_Grid_Create (RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if (argc < 3) return RedisModule_WrongArity(ctx);
+
+    RedisModuleString* id = RedisModule_CreateStringFromString(ctx, argv[1]);
+    // RedisModule_RetainString(ctx, id);
+
+    int64_t width, height;
+    RedisModule_StringToLongLong(argv[2], &width);
+    RedisModule_StringToLongLong(argv[3], &height);
+
+    Grid* g = Grid_create(id, width, height);
+    if (!g) return REDISMODULE_OK;
+
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    RedisModule_ReplicateVerbatim(ctx);
 
     return REDISMODULE_OK;
 }
@@ -505,6 +558,7 @@ int RedisModule_OnLoad (RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         .rdb_load = MC_UniverseRdbLoad,
         .rdb_save = MC_UniverseRdbSave,
         // .aof_rewrite = MC_UniverseAofRewrite, // disabled. it's not used.
+        // .digest = MC_UniverseDigest, // digest functions exist in module.c, and there is an example, but they appear not to be exported or something.
         .free = MC_UniverseFree
     };
 

@@ -63,18 +63,20 @@ typedef struct moduleValue {
     void *value;
 } moduleValue;
 
+#define LRU_BITS 24
+typedef struct RedisModuleString {
+    unsigned type:4;
+    unsigned encoding:4;
+    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
+                            * LFU data (least significant 8 bits frequency
+                            * and most significant 16 bits access time). */
+    int refcount;
+    void *ptr;
+} RedisModuleString;
 
-// typedef struct RedisModuleString {
-//     unsigned type:4;
-//     unsigned encoding:4;
-//     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
-//                             * LFU data (least significant 8 bits frequency
-//                             * and most significant 16 bits access time). */
-//     int refcount;
-//     void *ptr;
-// } RedisModuleString;
+int ReplyWithError (RedisModuleCtx *ctx, const char* format, ...);
 
-int ReplyWithError (RedisModuleCtx* ctx, const char* format, ...) {
+int ReplyWithError (RedisModuleCtx *ctx, const char* format, ...) {
   char buffer[256];
   va_list args;
   va_start (args, format);
@@ -85,6 +87,8 @@ int ReplyWithError (RedisModuleCtx* ctx, const char* format, ...) {
   va_end (args);
   return REDISMODULE_OK;
 }
+
+#define OBJ_PROP(o, p) o->##p
 
 #define BEGIN_ARRAY_REPLY() \
     size_t arrc = 0; \
@@ -103,5 +107,15 @@ int ReplyWithError (RedisModuleCtx* ctx, const char* format, ...) {
     RedisModule_ReplyWithDouble(ctx, v); \
     arrc += 2; \
 } while (0)
+
+#define ARRAY_REPLY_OBJ_INT(o, key) do { \
+    RedisModule_ReplyWithSimpleString(ctx, #key); \
+    RedisModule_ReplyWithLongLong(ctx, o->key); \
+    arrc += 2; \
+} while (0)
+
+
+// RedisModule_ReplyWithLongLong(ctx, OBJ_PROP(o, key));
+
 
 #endif // __REDIS_HACKERY__

@@ -4,7 +4,7 @@ const write_file = require('util').promisify(Fs.writeFile)
 const read_file = require('util').promisify(Fs.readFile)
 const exec = require('execa')
 const mkdir = require('make-dir')
-const tmp_dir = require('temp-dir')
+// const tmp_dir = require('temp-dir')
 const exists = require('path-exists')
 const log = require('pino')()
 
@@ -35,6 +35,7 @@ async function ensure_installation () {
   }
 
   try {
+    await mkdir(data_dir)
     if (!(await exists(redis.server_bin))) {
       // for now, redis will not upgrade itself. just download the latest
       // so, if you want to upgrade, just delete the redis directory
@@ -57,17 +58,19 @@ async function ensure_installation () {
   }
 }
 
+const data_dir = Path.join(__dirname, '.data')
 var _db
 const redis = {
   start, stop, kill, pid,
   restarter,
   dir: Path.join(__dirname, 'redis'),
+  data: data_dir,
   server_bin: Path.join(__dirname, 'redis', 'src', 'redis-server'),
-  sock: tmp_dir + '/meaningful_chaos_redis.sock',
-  pidfile: tmp_dir + '/meaningful_chaos_redis.pid',
-  logfile: tmp_dir + '/meaningful_chaos_redis.log',
-  stdout: tmp_dir + '/meaningful_chaos_stdout.log',
-  stderr: tmp_dir + '/meaningful_chaos_stderr.log',
+  sock: data_dir + '/meaningful_chaos_redis.sock',
+  pidfile: data_dir + '/meaningful_chaos_redis.pid',
+  logfile: data_dir + '/meaningful_chaos_redis.log',
+  stdout: data_dir + '/meaningful_chaos_stdout.log',
+  stderr: data_dir + '/meaningful_chaos_stderr.log',
   conffile: Path.join(__dirname, 'redis', 'meaningful-chaos.conf'),
   get db () {
     if (!_db) {
@@ -99,8 +102,8 @@ redis.conf = [
   'save 60 10000', // after 60 sec if at least 10000 keys changed
   'rdbcompression yes',
   'rdbchecksum yes',
-  'dbfilename db.rdb', // @Incomplete: move this to the data direcory, so it doesn't get deleted on an upgrade.
-  'dir ' + redis.dir,
+  'dbfilename db.rdb',
+  'dir ' + data_dir,
   // 'loadmodule ' + Path.join(__dirname, 'redis_module', 'redis_date_module.so'),
   'loadmodule ' + Path.join(__dirname, 'redis_module', 'meaningful-chaos.so'),
   // 'loadmodule ' + Path.join(__dirname, 'neural-redis', 'neuralredis.so'),
@@ -131,8 +134,11 @@ async function start () {
   let tries = 20, _pid = 0
   do {
     await sleep(100) // give it a little time to start
-    // log.info('...')
-  } while (--tries && !(_pid = await pid()))
+    if (--tries == 0) {
+      log.info('aborting attempt to find the pid after 20 tries')
+      break
+    }
+  } while (!(_pid = await pid()))
 
   // log.info('redis-cli -s '+redis.sock)
   return _pid
@@ -183,7 +189,7 @@ async function stop () {
 
 // TODO: move out to a lib
 async function is_running (query) {
-  query = (query + '').toLowerCase()
+  query = (query + '').toLowerCase().trim()
   let cmd = ''
   switch (process.platform) {
     case 'win32' : cmd = `tasklist`; break
@@ -192,7 +198,8 @@ async function is_running (query) {
   }
 
   const { stdout } = await exec.shell(cmd)
-  return !!~stdout.toLowerCase().indexOf(query)
+  // searching for spaces around it. works for darwin. not sure for others. %windows% %linux%
+  return !!~stdout.toLowerCase().indexOf(' '+query+' ')
 }
 
 // TODO: move out to a lib

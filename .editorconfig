@@ -4,6 +4,14 @@ root = 1
 indent_style = space
 indent_size = 4
 
+[Simple-WebSocket-Server/**.{c,cc,cpp,h,hpp}]
+indent_style = space
+indent_size = 2
+
+[CMakeLists.txt]
+indent_style = space
+indent_size = 4
+
 [FALCONN/src/random_benchmark/**.cc]
 indent_style = space
 indent_size = 2

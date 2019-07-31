@@ -5,7 +5,7 @@ by default, a universe is created in the default database. (TODO) the database c
 
 returns an array of statistics the universe has, like x points, x sectors, etc.
 
-### (TODO) MC.CONFIG.GET [field]
+### MC.CONFIG.GET [field]
 
 returns the universe configuration for this database, or just the value of the field requested.
 

@@ -1,7 +1,31 @@
-### multiple universes?
-it may be a future improvement to have universe's listen to a grid, so that let's say I'm over at a friend's house and I want to use her computer, well, my universe can also recognise events in her grid (camera) at the same time.. certainly worth experimenting with.
+### convert simple websocket server project
 
-for now this is all a single universe thing. also, I don't believe I will be doing custom types for each of these yet, until I need to. all of the parts of the universe will exist inside of the universe. moments will be stored inside of hashes
+- write universe.hpp, grid.hpp
+- write CMakeLists.txt for rax
+- include rax into mc-universe
+- rename examples -> mc-universe
+- include SimpleWebSocket-Server into mc-universe
+
+### simple websocket server
+
+I'm abandoning the idea of running this as a redis command set. it's just too dificult to debug. instead, I'm just going to use websockets to connect to the client(s). it already uses threads, so I can do the queries in a threaded way, and lock for writes.
+
+https://github.com/eidheim/Simple-WebSocket-Server
+
+the main disadvantage of this is that now there is no data storage, so (maybe) I'll want to include some components of redis (like the rdb) and store it there. if I just use flat files, then it may not be necessary. the whole point is to simplify this.
+
+instead of commands, it has different endpoints:
+
+#### /grid/:width/:height/:id
+
+each message to this grid is an update frame. upon receipt, it'll accumulate the buffer and run any events it receives.
+
+#### /event/:id
+
+listen for events on this id. every time an event happens, a message will be sent to each client, along with any additional data.
+
+
+
 
 ### redis module (c++ code)
 - essentials:

@@ -26,8 +26,8 @@ function start_server () {
     const compiler = webpack(config)
     const server = new WebpackDevServer(compiler, config.devServer)
 
-    redis.start().then((started) => {
-      console.log('redis started!! ', started)
+    redis.start().then((pid) => {
+      console.log(pid ? 'redis started with pid: '+pid : 'redis unable to start')
       redis.restarter('./redis_module/meaningful-chaos.so')
       if (!--i) resolve(server)
     })

@@ -1,6 +1,7 @@
 yarn-error.log
 .git
 .DS_Store
+build/
 node_modules/
 /dist/
 /redis/

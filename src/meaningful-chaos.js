@@ -5,6 +5,10 @@ import { empty_array } from '@lib/utils'
 import { put_cam_in_video_element, capture_video } from './camera'
 import { random_img_test, exaggerate_pixels, strongest_pixels } from './grid-stuff'
 
+import ReconnectingWebSocket from 'reconnecting-websocket'
+
+
+
 const raf = requestAnimationFrame
 
 var db
@@ -53,6 +57,11 @@ plugger(function meaningful_chaos (hh) {
       summarise_pixels(video_canvas, grid_canvas, 2)
       summarise_densities(grid_canvas, summary_canvas)
 
+      // grid_canvas.send(grid_canvas.grid)
+      if (grid_canvas.ws.readyState == 1) {
+        grid_canvas.ws.send(grid_canvas.grid)
+      }
+
       // canvas.pt = run_sequence(grid_canvas, )
 
       if (show_fps) {
@@ -73,8 +82,13 @@ plugger(function meaningful_chaos (hh) {
 
   put_cam_in_video_element(video, (stream) => {
     const settings = stream.getTracks()[0].getSettings()
-    const { width, height, frame_rate } = settings
+    const { width, height, deviceId: device_id, frameRate: frame_rate } = settings
+    // console.log('settings:', settings)
+    console.log("capturing device("+width+"x"+height+"@"+frame_rate+"):"+device_id)
     grid_canvas.resize(settings)
+    grid_canvas.ws = new ReconnectingWebSocket(`ws://localhost:1177/grid/${width}/${height}/${device_id}`, '', {
+      // debug: true
+    })
 
     if (frame_rate && !fps) fps = frame_rate
     max_diff = 1000 / fps
@@ -93,6 +107,7 @@ function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
   const width = dest_canvas.width
   const height = dest_canvas.height
   const dd = new Uint8ClampedArray(width * height * 4)
+  const grid_data = new Uint16Array(width * height)
 
   var vd = src_canvas.getContext('2d').getImageData(0, 0, width, height).data
   // @Performance: convert this to a a Float32Array
@@ -102,16 +117,17 @@ function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
 
   for (var val, density, x = 0, y = 0, i = 0; i < vd.length; i += 4) {
     // calculate the value of the pixel
-    val = Math.min(
+    val =
       Math.min(vd[i + 0] * exaggeration, 255) +
-          Math.min(vd[i + 1] * exaggeration, 255) +
-          Math.min(vd[i + 2] * exaggeration, 255)
-      , 255
-    )
+      Math.min(vd[i + 1] * exaggeration, 255) +
+      Math.min(vd[i + 2] * exaggeration, 255)
+
 
     // visually paint all of them greyscale
-    dd[i + 0] = dd[i + 1] = dd[i + 2] = grid[x][y] = val
+    dd[i + 0] = dd[i + 1] = dd[i + 2] = grid[x][y] = Math.min(val, 0xff)
     dd[i + 3] = 255
+
+    grid_data[(x * width) + y] = Math.min(val, 0xffff)
 
     density = ++densities[val]
     if (val > 0 && density > max_density) max_density = density
@@ -120,6 +136,13 @@ function summarise_pixels (src_canvas, dest_canvas, exaggeration = 4) {
     if (++x >= width) {
       x = 0
       y++
+    }
+  }
+
+  if (dest_canvas.ws) {
+    const ws = dest_canvas.ws
+    if (ws.readyState == 1) {
+      ws.send(grid_data)
     }
   }
 

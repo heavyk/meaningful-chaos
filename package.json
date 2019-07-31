@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "localhost": "webpack-dev-server"
+    "localhost": "webpack-dev-server",
+    "recompile": "rm -rf build && cmake -Bbuild -S. && make -j4 -C build VERBOSE=1",
+    "build": "cmake -Bbuild -S. && make -j4 -C build VERBOSE=1"
   },
   "author": "kenny",
   "license": "MIT",
@@ -38,6 +40,7 @@
     "path-exists": "^4.0.0",
     "pify": "^4.0.1",
     "pino": "^5.12.6",
+    "reconnecting-websocket": "^4.1.10",
     "temp-dir": "^2.0.0"
   }
 }

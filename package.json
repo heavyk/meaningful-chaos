@@ -6,8 +6,9 @@
   "scripts": {
     "start": "electron .",
     "localhost": "webpack-dev-server",
-    "recompile": "rm -rf build && cmake -Bbuild -S. && make -j4 -C build VERBOSE=1",
-    "build": "cmake -Bbuild -S. && make -j4 -C build VERBOSE=1"
+    "rebuild-mcu": "rm -rf mc-universe/build && cmake -Bmc-universe/build -Smc-universe && make -j4 -C mc-universe/build VERBOSE=1",
+    "build-mcu": "cmake -Bmc-universe/build -Smc-universe && make -j4 -C mc-universe/build VERBOSE=1",
+    "test-mcu": "cmake -Bmc-universe/build -Smc-universe && make -j4 -C mc-universe/build && make -C mc-universe/build test"
   },
   "author": "kenny",
   "license": "MIT",

@@ -1,6 +1,5 @@
 ### convert simple websocket server project
 
-- write universe.hpp, grid.hpp
 - write CMakeLists.txt for rax
 - include rax into mc-universe
 - rename examples -> mc-universe
@@ -20,7 +19,7 @@ instead of commands, it has different endpoints:
 
 each message to this grid is an update frame. upon receipt, it'll accumulate the buffer and run any events it receives.
 
-#### /event/:id
+#### /events
 
 listen for events on this id. every time an event happens, a message will be sent to each client, along with any additional data.
 
@@ -88,9 +87,13 @@ I liked the idea of writing in d, perhaps. c++ is such an unproductive language.
 
 https://github.com/libmir/mir-glas
 
-the downside is that redis can be run now on ARM, which means mobiles, so for the future that may be pretty good. eigen is supposedly optimised for arm neon as well, so full mobile support already exists in C++. with d, mir can probably support it (cause it uses llvm under the hood).
+the downside is that c/c++ can be run now on ARM, which means mobiles, so for the future that may be pretty good. eigen is supposedly optimised for arm neon as well, so full mobile support already exists in C++. with d, mir can probably support it (cause it uses llvm under the hood).
 
 android support seems pretty good:
 https://wiki.dlang.org/Build_D_for_Android
 
 iOS support is pretty much nonexistent.
+
+### clang stuff
+
+after the project reaches some size do unity builds: https://github.com/sakra/cotire

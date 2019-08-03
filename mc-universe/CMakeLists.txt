@@ -6,7 +6,7 @@ option(USE_DOUBLE "set ON to double size vectors" OFF)
 option(BUILD_TESTING "set ON to build tests" OFF)
 
 if(NOT MSVC)
-    add_compile_options(-std=c++17 -Wall -Wextra) # -Wsign-conversion
+    add_compile_options(-Wall -Wextra) # -Wsign-conversion
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         add_compile_options(-Wthread-safety)
     endif()
@@ -14,14 +14,13 @@ else()
     add_compile_options(/W1)
 endif()
 
+set(CMAKE_CXX_STANDARD 17)
+
 # https://stackoverflow.com/questions/21163188/most-simple-but-complete-cmake-example
-file(GLOB_RECURSE sources      *.c *.cpp *.h *.hpp)
+file(GLOB_RECURSE sources *.c *.cpp *.h *.hpp)
 
 add_executable(mc-universe mc-universe.cpp)
-target_include_directories(mc-universe PRIVATE ../Simple-WebSocket-Server)
-
-# (TEMP): for catch2.hpp, etc.
-include_directories(../redis_module/external)
+target_include_directories(mc-universe PRIVATE external/Simple-WebSocket-Server)
 
 find_package(Threads REQUIRED)
 target_link_libraries(mc-universe PRIVATE ${CMAKE_THREAD_LIBS_INIT})
@@ -57,8 +56,8 @@ set(BUILD_TESTING ON)
 
 if(BUILD_TESTING)
     enable_testing()
-    add_subdirectory(test)
-
-    # set BUILD_TESTING
+    include(CTest)
+    add_subdirectory(external/Catch2)
     add_compile_options(-DBUILD_TESTING)
+    add_subdirectory(test)
 endif()

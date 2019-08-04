@@ -20,6 +20,7 @@ set(CMAKE_CXX_STANDARD 17)
 file(GLOB_RECURSE sources *.c *.cpp *.h *.hpp)
 
 add_executable(mc-universe mc-universe.cpp)
+# add_library(mc-core mc-universe.cpp)
 target_include_directories(mc-universe PRIVATE external/Simple-WebSocket-Server)
 
 find_package(Threads REQUIRED)

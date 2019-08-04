@@ -3,6 +3,8 @@
 
 #include "stuff.hpp"
 
+#include <vector>
+
 struct Initialiser {
 public:
     Initialiser (uint16_t _x, uint16_t _y, uint32_t _value) : x(_x), y(_y), value(_value) {};

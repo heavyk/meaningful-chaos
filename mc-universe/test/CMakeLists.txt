@@ -7,4 +7,10 @@ add_executable(Grid-test Grid.cpp)
 add_test(Grid-test Grid-test)
 target_link_libraries(Grid-test Catch2::Catch2)
 
+# add_executable(mc-universe-test mc-universe.cpp)
+# add_test(mc-universe-test mc-universe-test)
+# target_link_libraries(mc-universe-test Catch2::Catch2)
+# # add_dependencies(mc-universe-test mc-core)
+# # target_link_libraries(mc-universe-test mc-core)
+
 # TODO make this automatic, with a node script

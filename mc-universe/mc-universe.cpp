@@ -1,18 +1,27 @@
 
 #include "stuff.hpp"
 
+#include <vector>
 #include <map>
 
 // websocket includes
-// #include "client_ws.hpp"
 #include "server_ws.hpp"
-
-// meaningful-chaos includes
-#include "Grid.hpp"
 
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 using WsConfig = SimpleWeb::SocketServer<SimpleWeb::WS>::Config;
-// using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
+
+#ifdef BUILD_TESTING
+// #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
+#define CATCH_CONFIG_RUNNER // I'll provide the main.
+#include <catch2/catch.hpp>
+
+#include "client_ws.hpp"
+
+using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
+#endif
+
+// meaningful-chaos includes
+#include "Grid.hpp"
 
 // @Incomplete: Grid should be a shared_ptr: https://en.cppreference.com/w/cpp/memory/shared_ptr
 unordered_map<shared_ptr<WsServer::Connection>, shared_ptr<Grid>> connection_grid;
@@ -191,30 +200,63 @@ int main (int argc, char* argv[]) {
 
 #ifdef BUILD_TESTING
     int result = Catch::Session().run(argc, argv);
-#else
-    UNUSED(argc);
-    UNUSED(argv);
-    int result = 0;
-#endif
 
     server.stop();
     server_thread.join();
 
     cout << "server stopped.." << endl;
-
     return result;
+#else
+    UNUSED(argc);
+    UNUSED(argv);
+    return 0;
+#endif
 }
 
 #ifdef BUILD_TESTING
-// #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
-#define CATCH_CONFIG_RUNNER // I'll provide the main.
-#include <catch2/catch.hpp>
-
-
 
 TEST_CASE("server creates a grid", "[server][grid]" ) {
-    // REQUIRE( Factorial(1) == 1 );
-    // WsClient client()
+    WsClient client("localhost:1177/grid/8/8/lala");
+
+    client.on_message = [&](shared_ptr<WsClient::Connection> connection, shared_ptr<WsClient::InMessage> in_message) {
+        REQUIRE(in_message->string() == "fragmented message");
+
+        ++client_callback_count;
+
+        connection->send_close(1000);
+    };
+
+    client.on_open = [&](shared_ptr<WsClient::Connection> connection) {
+        ++client_callback_count;
+        REQUIRE(!closed);
+
+        // connection->send("fragmented", nullptr, 1);
+        // connection->send(" ", nullptr, 0);
+        // connection->send("message", nullptr, 128);
+    };
+
+    client.on_close = [&](shared_ptr<WsClient::Connection> /*connection*/, int /*status*/, const string & /*reason*/) {
+        REQUIRE(!closed);
+        closed = true;
+    };
+
+    client.on_error = [](shared_ptr<WsClient::Connection> /*connection*/, const SimpleWeb::error_code &ec) {
+        cerr << ec.message() << endl;
+        REQUIRE(false);
+    };
+
+    thread client_thread([&client]() {
+        client.start();
+    });
+
+    while(!closed)
+        this_thread::sleep_for(chrono::milliseconds(5));
+
+    client.stop();
+    client_thread.join();
+
+    REQUIRE(client_callback_count == 2);
+    REQUIRE(server_callback_count == 1);
 }
 
 #endif // BUILD_TESTING

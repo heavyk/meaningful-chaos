@@ -1,9 +1,7 @@
-#include <stdio.h>
+
+#include "stuff.hpp"
 
 #include <map>
-#include <vector>
-
-using namespace std;
 
 // websocket includes
 // #include "client_ws.hpp"
@@ -13,6 +11,7 @@ using namespace std;
 #include "Grid.hpp"
 
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
+using WsConfig = SimpleWeb::SocketServer<SimpleWeb::WS>::Config;
 // using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
 
 // @Incomplete: Grid should be a shared_ptr: https://en.cppreference.com/w/cpp/memory/shared_ptr
@@ -22,14 +21,16 @@ unordered_multimap<shared_ptr<WsServer::Connection>, string> subed_to;
 unordered_multimap<string, shared_ptr<WsServer::Connection>> subs;
 
 // api
+// WsServer &init_server (unsigned short port);
+void add_endpoints (WsServer &server);
 void emit(string event, string data);
 void subscribe (shared_ptr<WsServer::Connection> conn, string event);
 void unsubscribe (shared_ptr<WsServer::Connection> conn, string event);
 void unsubscribe_all (shared_ptr<WsServer::Connection> conn);
 
-int main () {
-    WsServer server;
-    server.config.port = 1177;
+// ===== SERVER =====
+
+void add_endpoints (WsServer &server) {
 
     // ==== EvENTS ====
 
@@ -115,11 +116,11 @@ int main () {
 
         // @Incomplete: do stuff with the grid msg
         auto data_str = msg->string();
-        uint16_t *dd = (uint16_t*) data_str.data();
+        uint16_t* dd = (uint16_t*) data_str.data();
         cout << "data.length:" << data_str.length() << endl;
 
         // accumulate the grid px (TODO)
-        vector<Initialiser *> inits;
+        vector<Initialiser*> inits;
         grid->accumulate(dd, inits);
 
         // run all sequences on every overflow value (TODO)
@@ -135,17 +136,6 @@ int main () {
         // emit any events back to the client
         emit("test", "testing data");
     };
-
-    thread server_thread([&server]() { server.start(); });
-
-    cout << "listening on ws://localhost:" << server.config.port << endl;
-
-    server_thread.join();
-    server.stop();
-
-    cout << "server stopped.." << endl;
-
-    return 0;
 }
 
 
@@ -185,3 +175,46 @@ void unsubscribe_all (shared_ptr<WsServer::Connection> conn) {
         else ++it;
     }
 }
+
+// ===== MAIN =====
+
+int main (int argc, char* argv[]) {
+    WsServer server;
+    server.config.port = 1177;
+    server.config.thread_pool_size = 4;
+
+    add_endpoints(server);
+
+    thread server_thread([&server]() { server.start(); });
+
+    cout << "listening on ws://localhost:" << server.config.port << endl;
+
+#ifdef BUILD_TESTING
+    int result = Catch::Session().run(argc, argv);
+#else
+    UNUSED(argc);
+    UNUSED(argv);
+    int result = 0;
+#endif
+
+    server.stop();
+    server_thread.join();
+
+    cout << "server stopped.." << endl;
+
+    return result;
+}
+
+#ifdef BUILD_TESTING
+// #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
+#define CATCH_CONFIG_RUNNER // I'll provide the main.
+#include <catch2/catch.hpp>
+
+
+
+TEST_CASE("server creates a grid", "[server][grid]" ) {
+    // REQUIRE( Factorial(1) == 1 );
+    // WsClient client()
+}
+
+#endif // BUILD_TESTING

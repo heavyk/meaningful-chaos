@@ -1,3 +1,6 @@
+# make the parent directory path available for includes
+include_directories(..)
+
 # to fake out cmake, the test directory is made with symlinks from *.hpp -> *.cpp
 
 add_executable(Grid-test Grid.cpp)

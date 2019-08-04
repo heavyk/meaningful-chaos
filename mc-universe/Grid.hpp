@@ -1,10 +1,7 @@
 #ifndef __GRID_HPP__
 #define __GRID_HPP__
 
-#include <vector>
-#include <string>
-
-using namespace std;
+#include "stuff.hpp"
 
 struct Initialiser {
 public:
@@ -21,7 +18,7 @@ class Grid : public std::enable_shared_from_this<Grid> {
 public:
     Grid (string _id, int _width, int _height) noexcept : width(_width), height(_height) {
         // values = calloc(sizeof(float), width * hight);
-        px = (char *) calloc(1, width * height);
+        px = (uint8_t *) calloc(1, width * height);
         id = _id;
     }
 
@@ -29,7 +26,7 @@ public:
         free(px);
     }
 
-    void accumulate (uint16_t *dd, vector<Initialiser*> &inits) {
+    void accumulate (uint16_t* dd, vector<Initialiser*> &inits) {
         // @Incomplete: lock the grid while writing to it
         for (int y = 0; y < height; y++) {
             auto offset = y * width;
@@ -37,9 +34,12 @@ public:
                 uint32_t value = px[offset + x];
                 uint32_t inc = dd[offset + x];
                 uint32_t new_value = value + inc;
+                PRINTF("px[%d] = %d + (%d) = %d\n", offset + x, value, inc, new_value);
                 if (new_value > 255) {
                     auto init = new Initialiser(x, y, new_value);
                     inits.push_back(init);
+                    // do I save some sort of residual value?
+                    // maybe a fraction of the original value?
                     new_value = 0;
                 }
 
@@ -53,22 +53,33 @@ public:
     string id;
 
     // float *values;
-    char *px;
+    uint8_t* px;
 };
 
 #ifdef BUILD_TESTING
 #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
 #include <catch2/catch.hpp>
 
-unsigned int Factorial( unsigned int number ) {
-    return number <= 1 ? number : Factorial(number-1)*number;
-}
 
-TEST_CASE( "Factorials are computed", "[factorial]" ) {
-    REQUIRE( Factorial(1) == 1 );
-    REQUIRE( Factorial(2) == 2 );
-    REQUIRE( Factorial(3) == 6 );
-    REQUIRE( Factorial(10) == 3628800 );
+TEST_CASE("Grid accumulates properly", "[grid]" ) {
+    Grid* g = new Grid("lala", 8, 8);
+    vector<Initialiser*> inits;
+    uint16_t px[8][8] = {{0}};
+
+    // set a few contrived values
+    px[0][0] = 65;
+    px[1][2] = 129;
+
+    g->accumulate(*px, inits);
+    REQUIRE(*(g->px+0)+0 == 65);
+    REQUIRE(*(g->px+(1*8)+2) == 129);
+    REQUIRE(inits.size() == 0);
+
+    g->accumulate(*px, inits);
+    REQUIRE(*(g->px+0)+0 == 130);
+    REQUIRE(*(g->px+(1*8)+2) == 0);
+    REQUIRE(inits.size() == 1);
+    REQUIRE(inits[0]->value == 258);
 }
 
 #endif // BUILD_TESTING

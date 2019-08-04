@@ -56,7 +56,6 @@ set(BUILD_TESTING ON)
 
 if(BUILD_TESTING)
     enable_testing()
-    include(CTest)
     add_subdirectory(external/Catch2)
     add_compile_options(-DBUILD_TESTING)
     add_subdirectory(test)

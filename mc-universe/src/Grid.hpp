@@ -1,7 +1,7 @@
 #ifndef __GRID_HPP__
 #define __GRID_HPP__
 
-#include "stuff.hpp"
+#include "common.hpp"
 
 #include <vector>
 

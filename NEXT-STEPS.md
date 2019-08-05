@@ -81,6 +81,15 @@ the values grid + the overflow grid will then be processed, calling each sequenc
   - https://assemblyscript.github.io/assemblyscript/examples/game-of-life/
   - https://docs.assemblyscript.org/quick-start
 
+### c++ improvements
+
+- use boost containers: https://www.boost.org/doc/libs/1_70_0/libs/bimap/doc/html/boost_bimap/the_tutorial/controlling_collection_types.html
+- abseil-cpp: https://github.com/abseil/abseil-cpp/tree/master/CMake
+  - stack traces
+  - string join, split, substitute, cat, format, match, replace, etc.
+  - inlined_vector for the vector of inits
+- instead of unordered_multimap, maybe build a multikey version of rax, and use that (add another boolean bitfield which defines the entry as 'multi', meaning the next entry also has the same key)
+
 ### d-version?
 
 I liked the idea of writing in d, perhaps. c++ is such an unproductive language. there are optimised vector routines (which supposedly go faster than eigen, too)

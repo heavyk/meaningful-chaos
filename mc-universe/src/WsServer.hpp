@@ -1,31 +1,83 @@
 
 #include "common.hpp"
 
-#include <vector>
-#include <map>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/composite_key.hpp>
+
+using namespace boost::multi_index;
+// using namespace boost; // conflicts with std::shared_ptr
 
 // websocket includes
 #include "server_ws.hpp"
 
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 using WsConfig = SimpleWeb::SocketServer<SimpleWeb::WS>::Config;
+using WsConnection = SimpleWeb::SocketServer<SimpleWeb::WS>::Connection;
 
 // meaningful-chaos includes
 #include "Grid.hpp"
 
-// @Incomplete: Grid should be a shared_ptr: https://en.cppreference.com/w/cpp/memory/shared_ptr
-unordered_map<shared_ptr<WsServer::Connection>, shared_ptr<Grid>> connection_grid;
+// typedef WsServer::Connection Conn;
 
-unordered_multimap<shared_ptr<WsServer::Connection>, string> subed_to;
-unordered_multimap<string, shared_ptr<WsServer::Connection>> subs;
+std::unordered_map<shared_ptr<WsServer::Connection>, shared_ptr<Grid>> connection_grid;
+
+struct subscription {
+    shared_ptr<WsServer::Connection> conn;
+    string event;
+
+    subscription (WsServer::Connection* _conn, string _event) : conn(_conn), event(_event) {};
+
+    friend std::ostream& operator<<(std::ostream& os,const subscription& s) {
+        os << "Sub(" << s.conn << " -> " << s.event << ")" << endl;
+        return os;
+    }
+};
+
+struct key_conn{};
+struct key_event{};
+struct key_conn_event:composite_key<
+  subscription,
+  // BOOST_MULTI_INDEX_MEMBER(subscription, shared_ptr<WsServer::Connection>, conn),
+  member<subscription, shared_ptr<WsServer::Connection>, &subscription::conn>,
+  // BOOST_MULTI_INDEX_MEMBER(subscription, std::string, event)
+  member<subscription, string, &subscription::event>
+>{};
+
+typedef multi_index_container<
+  subscription,
+  indexed_by<
+    // select by unique connection
+    hashed_unique<
+        tag<key_conn>,
+        member<subscription, shared_ptr<WsServer::Connection>, &subscription::conn>
+    >,
+    // select by event
+    hashed_non_unique<
+        tag<key_event>,
+        member<subscription, string, &subscription::event>
+    >,
+    // select by event and connection (for subscribe, unsubscribe)
+    hashed_unique<
+        tag<key_conn_event>,
+        composite_key<
+            subscription,
+            member<subscription, shared_ptr<WsServer::Connection>, &subscription::conn>,
+            member<subscription, string, &subscription::event>
+        >
+    >
+  >
+> Subscriptions;
+
+Subscriptions subs;
 
 // api
-// WsServer &init_server (unsigned short port);
 void add_endpoints (WsServer &server);
 void emit(string event, string data);
-void subscribe (shared_ptr<WsServer::Connection> conn, string event);
-void unsubscribe (shared_ptr<WsServer::Connection> conn, string event);
-void unsubscribe_all (shared_ptr<WsServer::Connection> conn);
+void subscribe (shared_ptr<WsServer::Connection>& conn, string event);
+void unsubscribe (shared_ptr<WsServer::Connection>& conn, string event);
+void unsubscribe_all (shared_ptr<WsServer::Connection>& conn);
 
 // ===== SERVER =====
 
@@ -38,7 +90,7 @@ void add_endpoints (WsServer &server) {
     // [](shared_ptr<WsServer::Connection> conn) {}
 
     event_emitter.on_close =
-    [](shared_ptr<WsServer::Connection> conn, int, const std::string &) {
+    [](shared_ptr<WsServer::Connection> conn, int, const string &) {
         unsubscribe_all(conn);
     };
 
@@ -95,7 +147,7 @@ void add_endpoints (WsServer &server) {
     };
 
     grid.on_close =
-    [](shared_ptr<WsServer::Connection> conn, int, const std::string &) {
+    [](shared_ptr<WsServer::Connection> conn, int, const string &) {
         cout << "grid(" << conn->path_match[1] << '|' << conn->path_match[2] << '|' << conn->path_match[3] << ").on_close" << endl;
         connection_grid.erase(conn);
     };
@@ -138,41 +190,29 @@ void add_endpoints (WsServer &server) {
 }
 
 
-void emit(string event, string data) {
+void emit(const string event, const string data) {
     string msg = event + ':' + data;
-    auto it = subs.find(event);
-    if (it != subs.end()) {
-        it->second->send(msg);
+    auto& events = subs.get<key_event>();
+    for (auto it = events.find(event); it != events.end(); it++) {
+        // cout << it->conn.get() << "," << it->event << endl;
+        it->conn->send(msg);
     }
 }
 
-void subscribe (shared_ptr<WsServer::Connection> conn, string event) {
-    subs.insert(make_pair(event, conn));
-    subed_to.insert(make_pair(conn, event));
+void subscribe (shared_ptr<WsServer::Connection>& conn, const string event) {
+    subs.insert(subscription(conn.get(), event));
 }
 
-void unsubscribe (shared_ptr<WsServer::Connection> conn, string event) {
-    for (auto it = subs.find(event); it != subs.end(); ) {
-        if (it->second == conn) subs.erase(it);
-        else it++;
-    }
-
-    for (auto it = subed_to.find(conn); it != subed_to.end(); ) {
-        if (it->second == event) subed_to.erase(it);
-        else it++;
-    }
+void unsubscribe (shared_ptr<WsServer::Connection>& conn, const string event) {
+    auto& events = subs.get<key_conn_event>();
+    auto it = events.find(make_tuple(conn, event));
+    events.erase(it);
 }
 
-void unsubscribe_all (shared_ptr<WsServer::Connection> conn) {
-    for (auto it = subs.begin(); it != subs.end(); ) {
-        if(it->second == conn) it = subs.erase(it);
-        else ++it;
-    }
-
-    for (auto it = subed_to.begin(); it != subed_to.end(); ) {
-        if(it->first == conn) it = subed_to.erase(it);
-        else ++it;
-    }
+void unsubscribe_all (shared_ptr<WsServer::Connection>& conn) {
+    auto& events = subs.get<key_conn>();
+    auto it = events.find(conn);
+    events.erase(it);
 }
 
 #ifdef BUILD_TESTING

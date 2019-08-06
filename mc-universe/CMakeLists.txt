@@ -18,6 +18,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # add_subdirectory(src/)
 include_directories(src/)
+include_directories(external/)
 add_subdirectory(external/Simple-WebSocket-Server/)
 include_directories(external/Simple-WebSocket-Server/)
 

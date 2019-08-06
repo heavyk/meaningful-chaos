@@ -1,3 +1,6 @@
+#ifndef __WSSERVER_HPP__
+#define __WSSERVER_HPP__
+#define CATCH_CONFIG_RUNNER // I'll provide the main.
 
 #include "common.hpp"
 
@@ -216,9 +219,6 @@ void unsubscribe_all (shared_ptr<WsServer::Connection>& conn) {
 }
 
 #ifdef BUILD_TESTING
-// #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
-#define CATCH_CONFIG_RUNNER // I'll provide the main.
-#include <catch2/catch.hpp>
 
 #include "client_ws.hpp"
 
@@ -291,3 +291,4 @@ TEST_CASE("server creates a grid", "[server][grid]" ) {
 }
 
 #endif // BUILD_TESTING
+#endif // __WSSERVER_HPP__

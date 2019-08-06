@@ -9,6 +9,7 @@ using namespace std;
 #define UNUSED(V) ((void) V)
 
 #ifdef BUILD_TESTING
+#include <catch2/catch.hpp>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)

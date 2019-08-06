@@ -37,7 +37,7 @@ public:
                 uint32_t value = px[offset + x];
                 uint32_t inc = dd[offset + x];
                 uint32_t new_value = value + inc;
-                PRINTF("px[%d] = %d + (%d) = %d\n", offset + x, value, inc, new_value);
+                // PRINTF("px[%d] = %d + (%d) = %d\n", offset + x, value, inc, new_value);
                 if (new_value > 255) {
                     auto init = new Initialiser(x, y, new_value);
                     inits.push_back(init);
@@ -61,6 +61,7 @@ public:
 
 #ifdef BUILD_TESTING
 
+#include "rc4rand.h"
 
 TEST_CASE("Grid accumulates properly", "[grid]" ) {
     Grid* g = new Grid("lala", 8, 8);

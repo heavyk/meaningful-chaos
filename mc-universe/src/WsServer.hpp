@@ -83,6 +83,10 @@ void unsubscribe (shared_ptr<WsServer::Connection>& conn, string event);
 void unsubscribe_all (shared_ptr<WsServer::Connection>& conn);
 
 // ===== SERVER =====
+#ifdef BUILD_TESTING
+atomic<int> server_callback_count(0);
+vector<string> events_emitted;
+#endif // BUILD_TESTING
 
 void add_endpoints (WsServer &server) {
 
@@ -94,16 +98,25 @@ void add_endpoints (WsServer &server) {
 
     event_emitter.on_close =
     [](shared_ptr<WsServer::Connection> conn, int, const string &) {
+        #ifdef BUILD_TESTING
+        server_callback_count++;
+        #endif // BUILD_TESTING
         unsubscribe_all(conn);
     };
 
     event_emitter.on_error =
     [](shared_ptr<WsServer::Connection> conn, const error_code) {
+        #ifdef BUILD_TESTING
+        server_callback_count++;
+        #endif // BUILD_TESTING
         unsubscribe_all(conn);
     };
 
     event_emitter.on_message =
     [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
+        #ifdef BUILD_TESTING
+        server_callback_count++;
+        #endif // BUILD_TESTING
         string str = msg->string();
         auto len = str.length();
         if (len < 2 || str[1] != ':') return; // do nothing
@@ -124,18 +137,20 @@ void add_endpoints (WsServer &server) {
 
         default:
             // unknown command
-            cout << "unknown command: '" << cmd << "' for event: " << event << endl;
+            COUT << "unknown command: '" << cmd << "' for event: " << event << endl;
         }
     };
 
     // ==== GRID ====
 
-    // https://www.regextester.com/97058
     auto &grid = server.endpoint["^/grid/([0-9]+)/([0-9]+)/([a-zA-Z0-9_-]+)/?$"];
 
     grid.on_open =
     [](shared_ptr<WsServer::Connection> conn) {
-        cout << "grid(" << conn->path_match[1] << '|' << conn->path_match[2] << '|' << conn->path_match[3] << ").on_open" << endl;
+        #ifdef BUILD_TESTING
+        COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_open" << endl;
+        server_callback_count++;
+        #endif // BUILD_TESTING
 
         auto width = stoul(conn->path_match[1]);
         auto height = stoul(conn->path_match[2]);
@@ -143,7 +158,7 @@ void add_endpoints (WsServer &server) {
 
         auto it = connection_grid.find(conn);
         if (it == connection_grid.end()) {
-            cout << "making grid: " << width << "x" << height << endl;
+            COUT << "making grid: " << width << "x" << height << endl;
             auto grid = make_shared<Grid>(id, width, height);
             connection_grid[conn] = grid;
         }
@@ -151,19 +166,28 @@ void add_endpoints (WsServer &server) {
 
     grid.on_close =
     [](shared_ptr<WsServer::Connection> conn, int, const string &) {
-        cout << "grid(" << conn->path_match[1] << '|' << conn->path_match[2] << '|' << conn->path_match[3] << ").on_close" << endl;
+        #ifdef BUILD_TESTING
+        COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_close" << endl;
+        server_callback_count++;
+        #endif // BUILD_TESTING
         connection_grid.erase(conn);
     };
 
     grid.on_error =
     [](shared_ptr<WsServer::Connection> conn, const error_code) {
-        cout << "grid(" << conn->path_match[1] << '|' << conn->path_match[2] << '|' << conn->path_match[3] << ").on_error" << endl;
+        #ifdef BUILD_TESTING
+        COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_error" << endl;
+        server_callback_count++;
+        #endif // BUILD_TESTING
         connection_grid.erase(conn);
     };
 
     grid.on_message =
     [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
-        cout << "grid(" << conn->path_match[1] << '|' << conn->path_match[2] << '|' << conn->path_match[3] << ").on_message" << endl;
+        #ifdef BUILD_TESTING
+        COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_message" << endl;
+        server_callback_count++;
+        #endif // BUILD_TESTING
         auto it = connection_grid.find(conn);
         assert(it != connection_grid.end());
         auto grid = it->second;
@@ -171,7 +195,7 @@ void add_endpoints (WsServer &server) {
         // @Incomplete: do stuff with the grid msg
         auto data_str = msg->string();
         uint16_t* dd = (uint16_t*) data_str.data();
-        cout << "data.length:" << data_str.length() << endl;
+        COUT << "data.length:" << data_str.length() << endl;
 
         // accumulate the grid px (TODO)
         vector<Initialiser*> inits;
@@ -180,7 +204,7 @@ void add_endpoints (WsServer &server) {
         // run all sequences on every overflow value (TODO)
         // for (Initialiser *init; inits) {
         for (auto init = inits.begin(); init != inits.end(); init++) {
-            cout << "!!! x: " << (*init)->x << " y: " << (*init)->y << " value: " << (*init)->value << endl;
+            COUT << "!!! x: " << (*init)->x << " y: " << (*init)->y << " value: " << (*init)->value << endl;
             // for each sequence, run it.
             delete *init;
         }
@@ -197,7 +221,7 @@ void emit(const string event, const string data) {
     string msg = event + ':' + data;
     auto& events = subs.get<key_event>();
     for (auto it = events.find(event); it != events.end(); it++) {
-        // cout << it->conn.get() << "," << it->event << endl;
+        // COUT << it->conn.get() << "," << it->event << endl;
         it->conn->send(msg);
     }
 }
@@ -223,6 +247,7 @@ void unsubscribe_all (shared_ptr<WsServer::Connection>& conn) {
 #include "client_ws.hpp"
 
 using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
+using OutMessage = WsClient::OutMessage;
 
 
 
@@ -242,28 +267,51 @@ int main (int argc, char* argv[]) {
     server.stop();
     server_thread.join();
 
-    cout << "server stopped.." << endl;
+    COUT << "server stopped.." << endl;
     return result;
 }
 
-TEST_CASE("server creates a grid", "[server][grid]" ) {
+TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
     WsClient client("localhost:1177/grid/8/8/lala");
+    atomic<int> client_callback_count(0);
+    atomic<bool> closed(false);
+
+    int width = 8;
+    int height = 8;
 
     client.on_message = [&](shared_ptr<WsClient::Connection> connection, shared_ptr<WsClient::InMessage> in_message) {
-        REQUIRE(in_message->string() == "fragmented message");
+        REQUIRE(in_message->string() == "should not receive a message from the grid!");
+        REQUIRE(!closed);
 
         ++client_callback_count;
 
         connection->send_close(1000);
     };
 
-    client.on_open = [&](shared_ptr<WsClient::Connection> connection) {
+    client.on_open = [&](shared_ptr<WsClient::Connection> conn) {
         ++client_callback_count;
         REQUIRE(!closed);
+        auto len = width * height * 2;
 
-        // connection->send("fragmented", nullptr, 1);
-        // connection->send(" ", nullptr, 0);
-        // connection->send("message", nullptr, 128);
+        auto out = std::make_shared<OutMessage>(len);
+
+        // send them
+        for (int i = 0; i < 20; i++) {
+            // generate random bytes
+            string bytes(len, 0);
+            uint16_t* px = (uint16_t*) bytes.data();
+            for (auto x = 0; x < width; x++) {
+                for (auto y = 0; y < height; y++) {
+                    double v = rc4rand() / 0xFFFFFFFF;
+                    px[y * width + x] = (uint16_t) (v * 20);
+                }
+            }
+
+            conn->send(bytes);
+            this_thread::sleep_for(chrono::milliseconds(1));
+        }
+
+        conn->send_close(1000);
     };
 
     client.on_close = [&](shared_ptr<WsClient::Connection> /*connection*/, int /*status*/, const string & /*reason*/) {
@@ -280,14 +328,18 @@ TEST_CASE("server creates a grid", "[server][grid]" ) {
         client.start();
     });
 
-    while(!closed)
+    while (!closed) {
+
         this_thread::sleep_for(chrono::milliseconds(5));
+    }
 
     client.stop();
     client_thread.join();
 
-    REQUIRE(client_callback_count == 2);
-    REQUIRE(server_callback_count == 1);
+    REQUIRE(client_callback_count == 1); // no messages + close
+    REQUIRE(server_callback_count == 22); // open + 20 messages + close
+
+    // TODO: check one grid exists and that it's got the right properties.
 }
 
 #endif // BUILD_TESTING

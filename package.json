@@ -8,6 +8,7 @@
     "localhost": "webpack-dev-server",
     "rebuild-mcu": "rm -rf mc-universe/build && cmake -Bmc-universe/build -Smc-universe && make -j4 -C mc-universe/build VERBOSE=1",
     "build-mcu": "cmake -Bmc-universe/build -Smc-universe && make -j4 -C mc-universe/build VERBOSE=1",
+    "xcode-mcu": "cmake -Bmc-universe/build/xcode -GXcode -Smc-universe && open mc-universe/build/xcode/meaningful-chaos.xcodeproj",
     "test-mcu": "cmake -Bmc-universe/build -Smc-universe && make -j4 -C mc-universe/build && make -C mc-universe/build test"
   },
   "author": "kenny",

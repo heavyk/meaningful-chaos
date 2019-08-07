@@ -30,7 +30,7 @@ struct subscription {
     shared_ptr<WsServer::Connection> conn;
     string event;
 
-    subscription (WsServer::Connection* _conn, string _event) : conn(_conn), event(_event) {};
+    subscription (shared_ptr<WsServer::Connection> _conn, string _event) : conn(_conn), event(_event) {};
 
     friend std::ostream& operator<<(std::ostream& os,const subscription& s) {
         os << "Sub(" << s.conn << " -> " << s.event << ")" << endl;
@@ -115,6 +115,7 @@ void add_endpoints (WsServer &server) {
     event_emitter.on_message =
     [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
         #ifdef BUILD_TESTING
+        COUT << "events(" << conn.get() << ").message" << endl;
         server_callback_count++;
         #endif // BUILD_TESTING
         string str = msg->string();
@@ -123,16 +124,25 @@ void add_endpoints (WsServer &server) {
         char cmd = str[0];
         string event = str.substr(2, 255);
         switch (cmd) {
-        case 'u': // unsubscribe an event
+        case 's': // unsubscribe an event
             subscribe(conn, event);
+            #ifdef BUILD_TESTING
+            COUT << "events(" << conn.get() << ").subscribe(" << event << ')' << endl;
+            #endif // BUILD_TESTING
             break;
 
-        case 's': // subscribe to an event
+        case 'u': // subscribe to an event
             unsubscribe(conn, event);
+            #ifdef BUILD_TESTING
+            COUT << "events(" << conn.get() << ").unsubscribe(" << event << ')' << endl;
+            #endif // BUILD_TESTING
             break;
 
         case 'U': // unsubscribe to all events
             unsubscribe_all(conn);
+            #ifdef BUILD_TESTING
+            COUT << "events(" << conn.get() << ").unsubscribe_all" << event << ')' << endl;
+            #endif // BUILD_TESTING
             break;
 
         default:
@@ -227,19 +237,19 @@ void emit(const string event, const string data) {
 }
 
 void subscribe (shared_ptr<WsServer::Connection>& conn, const string event) {
-    subs.insert(subscription(conn.get(), event));
+    subs.insert(subscription(conn, event));
 }
 
 void unsubscribe (shared_ptr<WsServer::Connection>& conn, const string event) {
     auto& events = subs.get<key_conn_event>();
     auto it = events.find(make_tuple(conn, event));
-    events.erase(it);
+    if (it != events.end()) events.erase(it);
 }
 
 void unsubscribe_all (shared_ptr<WsServer::Connection>& conn) {
     auto& events = subs.get<key_conn>();
     auto it = events.find(conn);
-    events.erase(it);
+    if (it != events.end()) events.erase(it);
 }
 
 #ifdef BUILD_TESTING
@@ -254,7 +264,7 @@ using OutMessage = WsClient::OutMessage;
 int main (int argc, char* argv[]) {
     WsServer server;
     server.config.port = 1177;
-    server.config.thread_pool_size = 4;
+    // server.config.thread_pool_size = 4;
 
     add_endpoints(server);
 
@@ -264,6 +274,11 @@ int main (int argc, char* argv[]) {
 
     int result = Catch::Session().run(argc, argv);
 
+    // really lame: forn now, the tests need to finish in under one second...
+    // @Incomplete: add some way of easily finding out how many connections are open (prolly a connection counter)
+    // @Incomplete: add a function which holds on to lock while connections still exist.
+    this_thread::sleep_for(chrono::seconds(1));
+
     server.stop();
     server_thread.join();
 
@@ -272,25 +287,25 @@ int main (int argc, char* argv[]) {
 }
 
 TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
-    WsClient client("localhost:1177/grid/8/8/lala");
-    atomic<int> client_callback_count(0);
-    atomic<bool> closed(false);
-
     int width = 8;
     int height = 8;
 
-    client.on_message = [&](shared_ptr<WsClient::Connection> connection, shared_ptr<WsClient::InMessage> in_message) {
+    WsClient gclient("localhost:1177/grid/8/8/lala");
+    atomic<int> gclient_callback_count(0);
+    atomic<bool> gclosed(false);
+
+    gclient.on_message = [&](shared_ptr<WsClient::Connection> conn, shared_ptr<WsClient::InMessage> in_message) {
         REQUIRE(in_message->string() == "should not receive a message from the grid!");
-        REQUIRE(!closed);
+        REQUIRE(!gclosed);
 
-        ++client_callback_count;
+        ++gclient_callback_count;
 
-        connection->send_close(1000);
+        conn->send_close(1000);
     };
 
-    client.on_open = [&](shared_ptr<WsClient::Connection> conn) {
-        ++client_callback_count;
-        REQUIRE(!closed);
+    gclient.on_open = [&](shared_ptr<WsClient::Connection> conn) {
+        ++gclient_callback_count;
+        REQUIRE(!gclosed);
         auto len = width * height * 2;
 
         auto out = std::make_shared<OutMessage>(len);
@@ -314,30 +329,69 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
         conn->send_close(1000);
     };
 
-    client.on_close = [&](shared_ptr<WsClient::Connection> /*connection*/, int /*status*/, const string & /*reason*/) {
-        REQUIRE(!closed);
-        closed = true;
+    gclient.on_close = [&](shared_ptr<WsClient::Connection> /*conn*/, int /*status*/, const string & /*reason*/) {
+        REQUIRE(!gclosed);
+        gclosed = true;
     };
 
-    client.on_error = [](shared_ptr<WsClient::Connection> /*connection*/, const SimpleWeb::error_code &ec) {
+    gclient.on_error = [](shared_ptr<WsClient::Connection> /*conn*/, const SimpleWeb::error_code &ec) {
         cerr << ec.message() << endl;
         REQUIRE(false);
     };
 
-    thread client_thread([&client]() {
-        client.start();
-    });
+    WsClient eclient("localhost:1177/events");
+    atomic<bool> eclosed(false);
+    atomic<int> eclient_callback_count(0);
 
-    while (!closed) {
+    eclient.on_message = [&](shared_ptr<WsClient::Connection> conn, shared_ptr<WsClient::InMessage> in_message) {
+        REQUIRE(in_message->string() == "should not receive a message from the grid!");
+        REQUIRE(!eclosed);
 
+        ++eclient_callback_count;
+
+        conn->send_close(1000);
+    };
+
+    eclient.on_open = [&](shared_ptr<WsClient::Connection> conn) {
+        ++eclient_callback_count;
+        REQUIRE(!eclosed);
+
+        // subscribe to events
+        conn->send("u:init");
+        conn->send("u:does_not_exist");
+        conn->send("u:event with spaces");
+        conn->send("s:init");
+    };
+
+    eclient.on_close = [&](shared_ptr<WsClient::Connection> /*conn*/, int /*status*/, const string & /*reason*/) {
+        REQUIRE(!eclosed);
+        eclosed = true;
+    };
+
+    eclient.on_error = [](shared_ptr<WsClient::Connection> /*conn*/, const SimpleWeb::error_code &ec) {
+        cerr << ec.message() << endl;
+        REQUIRE(false);
+    };
+
+    thread eclient_thread([&eclient]() { eclient.start(); });
+    thread gclient_thread([&gclient]() { gclient.start(); });
+
+    while (!gclosed && !eclosed) {
         this_thread::sleep_for(chrono::milliseconds(5));
     }
 
-    client.stop();
-    client_thread.join();
+    eclient.stop();
+    gclient.stop();
+    eclient_thread.join();
+    gclient_thread.join();
 
-    REQUIRE(client_callback_count == 1); // no messages + close
-    REQUIRE(server_callback_count == 22); // open + 20 messages + close
+    // no messages + close
+    REQUIRE(gclient_callback_count == 1);
+    // no messages + close
+    REQUIRE(eclient_callback_count == 1);
+    // gopen + 20 messages + gclose (22)
+    // eopen + 3 subs + eclose (5)
+    REQUIRE(server_callback_count == (22 + 5));
 
     // TODO: check one grid exists and that it's got the right properties.
 }

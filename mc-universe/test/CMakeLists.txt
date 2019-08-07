@@ -3,6 +3,7 @@ include_directories(../src)
 
 if(NOT MSVC)
     add_compile_options(-fno-access-control)
+    add_compile_options(-g -ggdb -O0)
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         add_compile_options(-Wno-thread-safety)
     endif()

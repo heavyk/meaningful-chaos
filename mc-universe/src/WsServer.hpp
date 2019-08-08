@@ -84,7 +84,8 @@ void unsubscribe_all (shared_ptr<WsServer::Connection>& conn);
 
 // ===== SERVER =====
 #ifdef BUILD_TESTING
-atomic<int> server_callback_count(0);
+atomic<int> event_emitter_callback_count(0);
+atomic<int> grid_callback_count(0);
 vector<string> events_emitted;
 #endif // BUILD_TESTING
 
@@ -99,7 +100,7 @@ void add_endpoints (WsServer &server) {
     event_emitter.on_close =
     [](shared_ptr<WsServer::Connection> conn, int, const string &) {
         #ifdef BUILD_TESTING
-        server_callback_count++;
+        event_emitter_callback_count++;
         #endif // BUILD_TESTING
         unsubscribe_all(conn);
     };
@@ -107,7 +108,7 @@ void add_endpoints (WsServer &server) {
     event_emitter.on_error =
     [](shared_ptr<WsServer::Connection> conn, const error_code) {
         #ifdef BUILD_TESTING
-        server_callback_count++;
+        event_emitter_callback_count++;
         #endif // BUILD_TESTING
         unsubscribe_all(conn);
     };
@@ -116,7 +117,7 @@ void add_endpoints (WsServer &server) {
     [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
         #ifdef BUILD_TESTING
         COUT << "events(" << conn.get() << ").message" << endl;
-        server_callback_count++;
+        event_emitter_callback_count++;
         #endif // BUILD_TESTING
         string str = msg->string();
         auto len = str.length();
@@ -159,7 +160,7 @@ void add_endpoints (WsServer &server) {
     [](shared_ptr<WsServer::Connection> conn) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_open" << endl;
-        server_callback_count++;
+        grid_callback_count++;
         #endif // BUILD_TESTING
 
         auto width = stoul(conn->path_match[1]);
@@ -178,7 +179,7 @@ void add_endpoints (WsServer &server) {
     [](shared_ptr<WsServer::Connection> conn, int, const string &) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_close" << endl;
-        server_callback_count++;
+        grid_callback_count++;
         #endif // BUILD_TESTING
         connection_grid.erase(conn);
     };
@@ -187,7 +188,7 @@ void add_endpoints (WsServer &server) {
     [](shared_ptr<WsServer::Connection> conn, const error_code) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_error" << endl;
-        server_callback_count++;
+        grid_callback_count++;
         #endif // BUILD_TESTING
         connection_grid.erase(conn);
     };
@@ -196,7 +197,7 @@ void add_endpoints (WsServer &server) {
     [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_message" << endl;
-        server_callback_count++;
+        grid_callback_count++;
         #endif // BUILD_TESTING
         auto it = connection_grid.find(conn);
         assert(it != connection_grid.end());
@@ -272,12 +273,15 @@ int main (int argc, char* argv[]) {
 
     cout << "listening on ws://localhost:" << server.config.port << endl;
 
+    // give it time to bind..
+    this_thread::sleep_for(chrono::milliseconds(100));
+
     int result = Catch::Session().run(argc, argv);
 
     // really lame: forn now, the tests need to finish in under one second...
     // @Incomplete: add some way of easily finding out how many connections are open (prolly a connection counter)
     // @Incomplete: add a function which holds on to lock while connections still exist.
-    this_thread::sleep_for(chrono::seconds(1));
+    this_thread::sleep_for(chrono::seconds(2));
 
     server.stop();
     server_thread.join();
@@ -291,11 +295,13 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
     int height = 8;
 
     WsClient gclient("localhost:1177/grid/8/8/lala");
+    WsClient eclient("localhost:1177/events");
+
     atomic<int> gclient_callback_count(0);
     atomic<bool> gclosed(false);
 
-    gclient.on_message = [&](shared_ptr<WsClient::Connection> conn, shared_ptr<WsClient::InMessage> in_message) {
-        REQUIRE(in_message->string() == "should not receive a message from the grid!");
+    gclient.on_message = [&](shared_ptr<WsClient::Connection> conn, shared_ptr<WsClient::InMessage> msg) {
+        REQUIRE(msg->string() == "should not receive a message from the grid!");
         REQUIRE(!gclosed);
 
         ++gclient_callback_count;
@@ -332,6 +338,7 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
     gclient.on_close = [&](shared_ptr<WsClient::Connection> /*conn*/, int /*status*/, const string & /*reason*/) {
         REQUIRE(!gclosed);
         gclosed = true;
+        eclient.stop();
     };
 
     gclient.on_error = [](shared_ptr<WsClient::Connection> /*conn*/, const SimpleWeb::error_code &ec) {
@@ -339,17 +346,22 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
         REQUIRE(false);
     };
 
-    WsClient eclient("localhost:1177/events");
     atomic<bool> eclosed(false);
     atomic<int> eclient_callback_count(0);
 
-    eclient.on_message = [&](shared_ptr<WsClient::Connection> conn, shared_ptr<WsClient::InMessage> in_message) {
-        REQUIRE(in_message->string() == "should not receive a message from the grid!");
+    eclient.on_message = [&](shared_ptr<WsClient::Connection> conn, shared_ptr<WsClient::InMessage> msg) {
         REQUIRE(!eclosed);
 
         ++eclient_callback_count;
 
-        conn->send_close(1000);
+        string str(msg->string());
+
+        COUT << "event received:" << str << endl;
+        if (str == "exit") {
+            conn->send_close(1000);
+        } else {
+
+        }
     };
 
     eclient.on_open = [&](shared_ptr<WsClient::Connection> conn) {
@@ -380,8 +392,9 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
         this_thread::sleep_for(chrono::milliseconds(5));
     }
 
-    eclient.stop();
-    gclient.stop();
+    // not doing this. they should close theirselves after performing all the steps in the test.
+    // eclient.stop();
+    // gclient.stop();
     eclient_thread.join();
     gclient_thread.join();
 
@@ -390,8 +403,9 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
     // no messages + close
     REQUIRE(eclient_callback_count == 1);
     // gopen + 20 messages + gclose (22)
+    REQUIRE(grid_callback_count == 22);
     // eopen + 3 subs + eclose (5)
-    REQUIRE(server_callback_count == (22 + 5));
+    REQUIRE(event_emitter_callback_count == (5));
 
     // TODO: check one grid exists and that it's got the right properties.
 }

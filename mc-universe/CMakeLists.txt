@@ -21,6 +21,7 @@ include_directories(src/)
 include_directories(external/)
 add_subdirectory(external/Simple-WebSocket-Server/)
 include_directories(external/Simple-WebSocket-Server/)
+include_directories(external/rapidjson/include)
 
 # https://stackoverflow.com/questions/21163188/most-simple-but-complete-cmake-example
 file(GLOB_RECURSE sources *.c *.cpp *.h *.hpp)

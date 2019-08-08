@@ -9,6 +9,10 @@
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/composite_key.hpp>
 
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
+
+using namespace rapidjson;
 using namespace boost::multi_index;
 // using namespace boost; // conflicts with std::shared_ptr
 
@@ -94,14 +98,13 @@ void add_endpoints (WsServer &server) {
     // ==== EvENTS ====
 
     auto &event_emitter = server.endpoint["^/events/?$"];
-    // event_emitter.on_open =
-    // [](shared_ptr<WsServer::Connection> conn) {}
 
     event_emitter.on_close =
     [](shared_ptr<WsServer::Connection> conn, int, const string &) {
         #ifdef BUILD_TESTING
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
+
         unsubscribe_all(conn);
     };
 
@@ -110,6 +113,7 @@ void add_endpoints (WsServer &server) {
         #ifdef BUILD_TESTING
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
+
         unsubscribe_all(conn);
     };
 
@@ -119,6 +123,7 @@ void add_endpoints (WsServer &server) {
         COUT << "events(" << conn.get() << ").message" << endl;
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
+
         string str = msg->string();
         auto len = str.length();
         if (len < 2 || str[1] != ':') return; // do nothing
@@ -181,6 +186,7 @@ void add_endpoints (WsServer &server) {
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_close" << endl;
         grid_callback_count++;
         #endif // BUILD_TESTING
+
         connection_grid.erase(conn);
     };
 
@@ -190,6 +196,7 @@ void add_endpoints (WsServer &server) {
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_error" << endl;
         grid_callback_count++;
         #endif // BUILD_TESTING
+
         connection_grid.erase(conn);
     };
 
@@ -199,6 +206,7 @@ void add_endpoints (WsServer &server) {
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_message" << endl;
         grid_callback_count++;
         #endif // BUILD_TESTING
+
         auto it = connection_grid.find(conn);
         assert(it != connection_grid.end());
         auto grid = it->second;
@@ -213,9 +221,23 @@ void add_endpoints (WsServer &server) {
         grid->accumulate(dd, inits);
 
         // run all sequences on every overflow value (TODO)
-        // for (Initialiser *init; inits) {
+        string event = "init:grid/" + (string)conn->path_match[1] + '/' + (string)conn->path_match[2] + '/' + (string)conn->path_match[3];
         for (auto init = inits.begin(); init != inits.end(); init++) {
             COUT << "!!! x: " << (*init)->x << " y: " << (*init)->y << " value: " << (*init)->value << endl;
+
+            StringBuffer s;
+            Writer<StringBuffer> j(s);
+
+            j.StartObject();
+            j.Key("x");
+            j.Double((*init)->x);
+            j.Key("y");
+            j.Double((*init)->y);
+            j.Key("x");
+            j.Double((*init)->value);
+            j.EndObject();
+
+            emit(event, s.GetString());
             // for each sequence, run it.
             delete *init;
         }
@@ -229,7 +251,7 @@ void add_endpoints (WsServer &server) {
 
 
 void emit(const string event, const string data) {
-    string msg = event + ':' + data;
+    string msg = event + "::" + data;
     auto& events = subs.get<key_event>();
     for (auto it = events.find(event); it != events.end(); it++) {
         // COUT << it->conn.get() << "," << it->event << endl;
@@ -277,11 +299,6 @@ int main (int argc, char* argv[]) {
     this_thread::sleep_for(chrono::milliseconds(100));
 
     int result = Catch::Session().run(argc, argv);
-
-    // really lame: forn now, the tests need to finish in under one second...
-    // @Incomplete: add some way of easily finding out how many connections are open (prolly a connection counter)
-    // @Incomplete: add a function which holds on to lock while connections still exist.
-    this_thread::sleep_for(chrono::seconds(2));
 
     server.stop();
     server_thread.join();

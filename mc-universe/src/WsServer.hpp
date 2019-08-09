@@ -17,11 +17,14 @@ using namespace boost::multi_index;
 // using namespace boost; // conflicts with std::shared_ptr
 
 // websocket includes
-#include "server_ws.hpp"
+#include "Simple-WebSocket-Server/mutex.hpp"
+#include "Simple-WebSocket-Server/server_ws.hpp"
 
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 using WsConfig = SimpleWeb::SocketServer<SimpleWeb::WS>::Config;
 using WsConnection = SimpleWeb::SocketServer<SimpleWeb::WS>::Connection;
+using LockGuard = SimpleWeb::LockGuard;
+using Mutex = SimpleWeb::Mutex;
 
 // meaningful-chaos includes
 #include "Grid.hpp"
@@ -30,61 +33,65 @@ using WsConnection = SimpleWeb::SocketServer<SimpleWeb::WS>::Connection;
 
 std::unordered_map<shared_ptr<WsServer::Connection>, shared_ptr<Grid>> connection_grid;
 
-struct subscription {
-    shared_ptr<WsServer::Connection> conn;
+struct Subscription {
+    WsServer::Connection* conn;
     string event;
 
-    subscription (shared_ptr<WsServer::Connection> _conn, string _event) : conn(_conn), event(_event) {};
+    Subscription (WsServer::Connection* _conn, string _event) : conn(_conn), event(_event) {};
 
-    friend std::ostream& operator<<(std::ostream& os,const subscription& s) {
+    friend std::ostream& operator<<(std::ostream& os, const Subscription& s) {
         os << "Sub(" << s.conn << " -> " << s.event << ")" << endl;
         return os;
     }
 };
 
-struct key_conn{};
-struct key_event{};
-struct key_conn_event:composite_key<
-  subscription,
-  // BOOST_MULTI_INDEX_MEMBER(subscription, shared_ptr<WsServer::Connection>, conn),
-  member<subscription, shared_ptr<WsServer::Connection>, &subscription::conn>,
-  // BOOST_MULTI_INDEX_MEMBER(subscription, std::string, event)
-  member<subscription, string, &subscription::event>
+struct by_conn{};
+struct by_event{};
+struct by_conn_event:composite_key<
+  Subscription,
+  member<Subscription, WsServer::Connection*, &Subscription::conn>,
+  member<Subscription, string, &Subscription::event>
 >{};
 
 typedef multi_index_container<
-  subscription,
+  Subscription,
   indexed_by<
     // select by unique connection
-    hashed_unique<
-        tag<key_conn>,
-        member<subscription, shared_ptr<WsServer::Connection>, &subscription::conn>
+    hashed_non_unique<
+        tag<by_conn>,
+        member<Subscription, WsServer::Connection*, &Subscription::conn>
     >,
     // select by event
     hashed_non_unique<
-        tag<key_event>,
-        member<subscription, string, &subscription::event>
+        tag<by_event>,
+        member<Subscription, string, &Subscription::event>
     >,
     // select by event and connection (for subscribe, unsubscribe)
     hashed_unique<
-        tag<key_conn_event>,
+        tag<by_conn_event>,
         composite_key<
-            subscription,
-            member<subscription, shared_ptr<WsServer::Connection>, &subscription::conn>,
-            member<subscription, string, &subscription::event>
+            Subscription,
+            member<Subscription, WsServer::Connection*, &Subscription::conn>,
+            member<Subscription, string, &Subscription::event>
         >
     >
   >
 > Subscriptions;
 
 Subscriptions subs;
+Mutex subs_mutex;
+
+auto&& subs_by_event = subs.get<by_event>();
+auto&& subs_by_conn_event = subs.get<by_conn_event>();
+auto&& subs_by_conn = subs.get<by_conn>();
+
 
 // api
 void add_endpoints (WsServer &server);
 void emit(string event, string data);
-void subscribe (shared_ptr<WsServer::Connection>& conn, string event);
-void unsubscribe (shared_ptr<WsServer::Connection>& conn, string event);
-void unsubscribe_all (shared_ptr<WsServer::Connection>& conn);
+void subscribe (WsServer::Connection* conn, string event);
+void unsubscribe (WsServer::Connection* conn, string event);
+void unsubscribe_all (WsServer::Connection* conn);
 
 // ===== SERVER =====
 #ifdef BUILD_TESTING
@@ -105,7 +112,7 @@ void add_endpoints (WsServer &server) {
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
 
-        unsubscribe_all(conn);
+        unsubscribe_all(conn.get());
     };
 
     event_emitter.on_error =
@@ -114,13 +121,12 @@ void add_endpoints (WsServer &server) {
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
 
-        unsubscribe_all(conn);
+        unsubscribe_all(conn.get());
     };
 
     event_emitter.on_message =
     [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
         #ifdef BUILD_TESTING
-        COUT << "events(" << conn.get() << ").message" << endl;
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
 
@@ -130,26 +136,45 @@ void add_endpoints (WsServer &server) {
         char cmd = str[0];
         string event = str.substr(2, 255);
         switch (cmd) {
-        case 's': // unsubscribe an event
-            subscribe(conn, event);
+        case 's': {
+            // unsubscribe an event
             #ifdef BUILD_TESTING
             COUT << "events(" << conn.get() << ").subscribe(" << event << ')' << endl;
             #endif // BUILD_TESTING
-            break;
 
-        case 'u': // subscribe to an event
-            unsubscribe(conn, event);
+            subscribe(conn.get(), event);
+            break;
+        } case 'u': {
+            // subscribe to an event
             #ifdef BUILD_TESTING
             COUT << "events(" << conn.get() << ").unsubscribe(" << event << ')' << endl;
             #endif // BUILD_TESTING
-            break;
 
-        case 'U': // unsubscribe to all events
-            unsubscribe_all(conn);
+            unsubscribe(conn.get(), event);
+            break;
+        } case 'U': {
+            // unsubscribe to *all* events
             #ifdef BUILD_TESTING
             COUT << "events(" << conn.get() << ").unsubscribe_all" << event << ')' << endl;
             #endif // BUILD_TESTING
+
+            unsubscribe_all(conn.get());
             break;
+        } case 'L': {
+            // list subscriptions
+            #ifdef BUILD_TESTING
+            COUT << "events(" << conn.get() << ").list_all" << event << ')' << endl;
+            #endif // BUILD_TESTING
+
+            auto&& events = subs.get<by_conn>(); // is this necessary to do every time? can this be cached?
+            auto it = events.find(conn.get());
+            if (it == events.end()) {
+                COUT << "no subscriptions" << endl;
+            } else for (; it != events.end(); it++) {
+                // COUT << "sub:" << it->event << endl;
+            }
+            break;
+        }
 
         default:
             // unknown command
@@ -214,65 +239,75 @@ void add_endpoints (WsServer &server) {
         // @Incomplete: do stuff with the grid msg
         auto data_str = msg->string();
         uint16_t* dd = (uint16_t*) data_str.data();
-        COUT << "data.length:" << data_str.length() << endl;
+        // COUT << "data.length:" << data_str.length() << endl;
 
         // accumulate the grid px (TODO)
         vector<Initialiser*> inits;
         grid->accumulate(dd, inits);
 
-        // run all sequences on every overflow value (TODO)
-        string event = "init:grid/" + (string)conn->path_match[1] + '/' + (string)conn->path_match[2] + '/' + (string)conn->path_match[3];
-        for (auto init = inits.begin(); init != inits.end(); init++) {
-            COUT << "!!! x: " << (*init)->x << " y: " << (*init)->y << " value: " << (*init)->value << endl;
+        if (inits.size() > 0) {
+            // run all sequences on every overflow value (TODO)
+            string event = "init:grid/" + (string)conn->path_match[1] + '/' + (string)conn->path_match[2] + '/' + (string)conn->path_match[3];
+            for (auto init = inits.begin(); init != inits.end(); init++) {
+                COUT << "!!! x: " << (*init)->x << " y: " << (*init)->y << " value: " << (*init)->value << endl;
 
-            StringBuffer s;
-            Writer<StringBuffer> j(s);
+                StringBuffer s;
+                Writer<StringBuffer> j(s);
 
-            j.StartObject();
-            j.Key("x");
-            j.Double((*init)->x);
-            j.Key("y");
-            j.Double((*init)->y);
-            j.Key("x");
-            j.Double((*init)->value);
-            j.EndObject();
+                j.StartObject();
+                j.Key("x");
+                j.Double((*init)->x);
+                j.Key("y");
+                j.Double((*init)->y);
+                j.Key("x");
+                j.Double((*init)->value);
+                j.EndObject();
 
-            emit(event, s.GetString());
-            // for each sequence, run it.
-            delete *init;
+                emit(event, s.GetString());
+                // for each sequence, run it.
+                delete *init;
+            }
+
+            // query the universe for nearest points to those values (TODO)
+
+            // emit any events back to the client
         }
-
-        // query the universe for nearest points to those values (TODO)
-
-        // emit any events back to the client
-        emit("test", "testing data");
     };
 }
 
 
 void emit(const string event, const string data) {
     string msg = event + "::" + data;
-    auto& events = subs.get<key_event>();
-    for (auto it = events.find(event); it != events.end(); it++) {
-        // COUT << it->conn.get() << "," << it->event << endl;
+    COUT << "emit(): " << msg << endl;
+    auto it = subs_by_event.find(event);
+    if (it == subs_by_event.end()) COUT << "no listeners" << endl;
+    else for (; it != subs_by_event.end(); it++) {
+        COUT << "emit(" << it->conn << ',' << it->event << ')' << endl;
         it->conn->send(msg);
     }
 }
 
-void subscribe (shared_ptr<WsServer::Connection>& conn, const string event) {
-    subs.insert(subscription(conn, event));
+void subscribe (WsServer::Connection* conn, const string event) {
+    LockGuard lock(subs_mutex);
+    subs.insert(Subscription(conn, event));
 }
 
-void unsubscribe (shared_ptr<WsServer::Connection>& conn, const string event) {
-    auto& events = subs.get<key_conn_event>();
-    auto it = events.find(make_tuple(conn, event));
-    if (it != events.end()) events.erase(it);
+void unsubscribe (WsServer::Connection* conn, const string event) {
+    // auto&& subs_by_conn_event = subs.get<by_conn_event>(); // is this necessary to do every time? can this be cached?
+    auto it = subs_by_conn_event.find(make_tuple(conn, event));
+    if (it != subs_by_conn_event.end()) {
+        LockGuard lock(subs_mutex);
+        subs_by_conn_event.erase(it);
+    }
 }
 
-void unsubscribe_all (shared_ptr<WsServer::Connection>& conn) {
-    auto& events = subs.get<key_conn>();
-    auto it = events.find(conn);
-    if (it != events.end()) events.erase(it);
+void unsubscribe_all (WsServer::Connection* conn) {
+    // auto&& subs_by_conn = subs.get<by_conn>(); // is this necessary to do every time? can this be cached?
+    auto it = subs_by_conn.find(conn);
+    if (it != subs_by_conn.end()) {
+        LockGuard lock(subs_mutex);
+        subs_by_conn.erase(it);
+    }
 }
 
 #ifdef BUILD_TESTING
@@ -307,7 +342,11 @@ int main (int argc, char* argv[]) {
     return result;
 }
 
-TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
+// TEST_CASE("hash tables actually work", "") {
+//     // subscribe(conn, "test");
+// }
+
+TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
     int width = 8;
     int height = 8;
 
@@ -341,7 +380,7 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
             for (auto x = 0; x < width; x++) {
                 for (auto y = 0; y < height; y++) {
                     double v = rc4rand() / 0xFFFFFFFF;
-                    px[y * width + x] = (uint16_t) (v * 20);
+                    px[y * width + x] = (uint16_t) (v * 200);
                 }
             }
 
@@ -390,6 +429,7 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
         conn->send("u:does_not_exist");
         conn->send("u:event with spaces");
         conn->send("s:init");
+        conn->send("s:test");
     };
 
     eclient.on_close = [&](shared_ptr<WsClient::Connection> /*conn*/, int /*status*/, const string & /*reason*/) {
@@ -422,7 +462,7 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]" ) {
     // gopen + 20 messages + gclose (22)
     REQUIRE(grid_callback_count == 22);
     // eopen + 3 subs + eclose (5)
-    REQUIRE(event_emitter_callback_count == (5));
+    REQUIRE(event_emitter_callback_count == 6);
 
     // TODO: check one grid exists and that it's got the right properties.
 }

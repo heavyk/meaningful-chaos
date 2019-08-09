@@ -374,8 +374,10 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
             uint16_t* px = (uint16_t*) bytes.data();
             for (auto x = 0; x < width; x++) {
                 for (auto y = 0; y < height; y++) {
-                    double v = rc4rand() / 0xFFFFFFFF;
-                    px[y * width + x] = (uint16_t) (v * 200);
+                    double v = rc4rand();
+                    v = v / 0xFFFFFFFF;
+                    auto val = v * 200;
+                    px[y * width + x] = val;
                 }
             }
 

@@ -107,6 +107,7 @@ void add_endpoints (WsServer &server) {
     event_emitter.on_close =
     [](shared_ptr<WsConnection> conn, int, const string &) {
         #ifdef BUILD_TESTING
+        COUT << "emitter(" << conn.get() << ").on_close" << endl;
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
 
@@ -116,6 +117,7 @@ void add_endpoints (WsServer &server) {
     event_emitter.on_error =
     [](shared_ptr<WsConnection> conn, const error_code) {
         #ifdef BUILD_TESTING
+        COUT << "emitter(" << conn.get() << ").on_error" << endl;
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
 
@@ -137,7 +139,7 @@ void add_endpoints (WsServer &server) {
         case 's': {
             // unsubscribe an event
             #ifdef BUILD_TESTING
-            COUT << "events(" << conn.get() << ").subscribe(" << event << ')' << endl;
+            COUT << "emitter(" << conn.get() << ").subscribe(" << event << ')' << endl;
             #endif // BUILD_TESTING
 
             subscribe(conn.get(), event);
@@ -145,7 +147,7 @@ void add_endpoints (WsServer &server) {
         } case 'u': {
             // subscribe to an event
             #ifdef BUILD_TESTING
-            COUT << "events(" << conn.get() << ").unsubscribe(" << event << ')' << endl;
+            COUT << "emitter(" << conn.get() << ").unsubscribe(" << event << ')' << endl;
             #endif // BUILD_TESTING
 
             unsubscribe(conn.get(), event);
@@ -153,7 +155,7 @@ void add_endpoints (WsServer &server) {
         } case 'U': {
             // unsubscribe to *all* events
             #ifdef BUILD_TESTING
-            COUT << "events(" << conn.get() << ").unsubscribe_all" << event << ')' << endl;
+            COUT << "emitter(" << conn.get() << ").unsubscribe_all" << event << ')' << endl;
             #endif // BUILD_TESTING
 
             unsubscribe_all(conn.get());
@@ -161,14 +163,13 @@ void add_endpoints (WsServer &server) {
         } case 'L': {
             // list subscriptions
             #ifdef BUILD_TESTING
-            COUT << "events(" << conn.get() << ").list_all" << event << ')' << endl;
+            COUT << "emitter(" << conn.get() << ").list_all" << event << ')' << endl;
             #endif // BUILD_TESTING
 
             auto&& events = subs.get<by_conn>(); // is this necessary to do every time? can this be cached?
             auto it = events.find(conn.get());
-            if (it == events.end()) {
-                COUT << "no subscriptions" << endl;
-            } else for (; it != events.end(); it++) {
+            if (it == events.end()) COUT << "no subscriptions" << endl; else
+            for (; it != events.end(); it++) {
                 // COUT << "sub:" << it->event << endl;
             }
             break;
@@ -238,7 +239,8 @@ void add_endpoints (WsServer &server) {
         auto data_str = msg->string();
         uint16_t* dd = (uint16_t*) data_str.data();
 
-        // accumulate the grid px (TODO)
+        // accumulate the grid px
+        // @Optimise: use absil stack vector here instead and init them in stack space instead of thrashing the memory
         vector<Initialiser*> inits;
         grid->accumulate(dd, inits);
 
@@ -246,8 +248,6 @@ void add_endpoints (WsServer &server) {
             // run all sequences on every overflow value (TODO)
             string event = "init:grid/" + (string)conn->path_match[1] + '/' + (string)conn->path_match[2] + '/' + (string)conn->path_match[3];
             for (auto init = inits.begin(); init != inits.end(); init++) {
-                COUT << "!!! x: " << (*init)->x << " y: " << (*init)->y << " value: " << (*init)->value << endl;
-
                 StringBuffer s;
                 Writer<StringBuffer> j(s);
 
@@ -256,12 +256,23 @@ void add_endpoints (WsServer &server) {
                 j.Double((*init)->x);
                 j.Key("y");
                 j.Double((*init)->y);
-                j.Key("x");
+                j.Key("v");
                 j.Double((*init)->value);
                 j.EndObject();
 
                 emit(event, s.GetString());
-                // for each sequence, run it.
+
+                // @Incomplete: for each sequence, run them with this initial data.
+                //              for now, though just generate random values
+                const uint16_t dimensions = 20;
+                // fill with random values:
+                float* query = (float*) calloc(sizeof(float), dimensions);
+                for (int i = 0; i < dimensions; i++) {
+                    query[i] = random_number(-1000, 1000);
+                }
+
+                // @Inocomplete: query the universe for the value using inner product distance function.
+
                 delete *init;
             }
 
@@ -277,8 +288,8 @@ void emit(const string event, const string data) {
     string msg = event + "::" + data;
     COUT << "emit(): " << msg << endl;
     auto it = subs_by_event.find(event);
-    if (it == subs_by_event.end()) COUT << "no listeners" << endl;
-    else for (; it != subs_by_event.end(); it++) {
+    // if (it == subs_by_event.end()) COUT << "no listeners" << endl; else
+    for (; it != subs_by_event.end(); it++) {
         COUT << "emit(" << it->conn << ',' << it->event << ')' << endl;
         it->conn->send(msg);
     }
@@ -330,6 +341,10 @@ int main (int argc, char* argv[]) {
 
     int result = Catch::Session().run(argc, argv);
 
+    // give it time to finish up (justin timberlake)..
+    this_thread::sleep_for(chrono::milliseconds(1000));
+
+    // @Incomplete: I really want a function that stops accepting new connections and then stops when the last one disconnects.
     server.stop();
     server_thread.join();
 
@@ -367,6 +382,9 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
 
         auto out = std::make_shared<OutMessage>(len);
 
+        // seed the prng so the results are always the same.
+        rc4srand(1234);
+
         // send them
         for (int i = 0; i < 20; i++) {
             // generate random bytes
@@ -374,10 +392,7 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
             uint16_t* px = (uint16_t*) bytes.data();
             for (auto x = 0; x < width; x++) {
                 for (auto y = 0; y < height; y++) {
-                    double v = rc4rand();
-                    v = v / 0xFFFFFFFF;
-                    auto val = v * 200;
-                    px[y * width + x] = val;
+                    px[y * width + x] = (uint16_t) random_number(0, 22);
                 }
             }
 
@@ -413,7 +428,9 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
         if (str == "exit") {
             conn->send_close(1000);
         } else {
-
+            // emit(): init:grid/8/8/lala::{"x":4.0,"y":0.0,"v":267.0}
+            // emit(): init:grid/8/8/lala::{"x":1.0,"y":6.0,"v":265.0}
+            // emit(): init:grid/8/8/lala::{"x":0.0,"y":7.0,"v":272.0}
         }
     };
 
@@ -425,8 +442,8 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
         conn->send("u:init");
         conn->send("u:does_not_exist");
         conn->send("u:event with spaces");
-        conn->send("s:init");
         conn->send("s:test");
+        conn->send("s:init:grid/8/8/lala");
     };
 
     eclient.on_close = [&](shared_ptr<WsClient::Connection> /*conn*/, int /*status*/, const string & /*reason*/) {
@@ -454,11 +471,11 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
 
     // no messages + close
     REQUIRE(gclient_callback_count == 1);
-    // no messages + close
-    REQUIRE(eclient_callback_count == 1);
+    // init:grid/8/8/lala(3) + close
+    REQUIRE(eclient_callback_count == 4);
     // gopen + 20 messages + gclose (22)
     REQUIRE(grid_callback_count == 22);
-    // eopen + 3 subs + eclose (5)
+    // 3 unsubs + 2 subs + eclose (6)
     REQUIRE(event_emitter_callback_count == 6);
 
     // TODO: check one grid exists and that it's got the right properties.

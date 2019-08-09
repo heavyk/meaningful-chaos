@@ -1,5 +1,5 @@
-#ifndef __STUFF_HPP__
-#define __STUFF_HPP__
+#ifndef __COMMON_HPP__
+#define __COMMON_HPP__
 
 #include <stdio.h>
 #include <string>
@@ -27,4 +27,37 @@ log_disabled_output& operator << (log_disabled_output& any, std::ostream&(*)(std
 // #define PRINT(str) do { } while ( false )
 #endif
 
-#endif // __STUFF_HPP__
+#include "rc4rand.h"
+
+double random_number (double min = 0.0, double max = 1.0) {
+    double val = rc4rand();
+    val /= 0xFFFFFFFF;
+    if (min != 0 || max != 1.0) {
+        double diff = max - min;
+        val = val * diff + min;
+    }
+
+    return val;
+}
+
+/* TEST_CASE("random_number", "") {
+    for (int i = 0; i < 1000; i++) {
+        auto n = random_number();
+        REQUIRE(n >= 0);
+        REQUIRE(n <= 1);
+    }
+
+    for (int i = 0; i < 1000; i++) {
+        auto n = random_number(-1, -2);
+        REQUIRE(n >= -2);
+        REQUIRE(n <= -1);
+    }
+
+    for (int i = 0; i < 1000; i++) {
+        auto n = random_number(-1000, 2000);
+        REQUIRE(n >= -1000);
+        REQUIRE(n <= 2000);
+    }
+} */
+
+#endif // __COMMON_HPP__

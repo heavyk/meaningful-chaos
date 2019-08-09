@@ -29,15 +29,13 @@ using Mutex = SimpleWeb::Mutex;
 // meaningful-chaos includes
 #include "Grid.hpp"
 
-// typedef WsServer::Connection Conn;
-
-std::unordered_map<shared_ptr<WsServer::Connection>, shared_ptr<Grid>> connection_grid;
+std::unordered_map<shared_ptr<WsConnection>, shared_ptr<Grid>> connection_grid;
 
 struct Subscription {
-    WsServer::Connection* conn;
+    WsConnection* conn;
     string event;
 
-    Subscription (WsServer::Connection* _conn, string _event) : conn(_conn), event(_event) {};
+    Subscription (WsConnection* _conn, string _event) : conn(_conn), event(_event) {};
 
     friend std::ostream& operator<<(std::ostream& os, const Subscription& s) {
         os << "Sub(" << s.conn << " -> " << s.event << ")" << endl;
@@ -49,7 +47,7 @@ struct by_conn{};
 struct by_event{};
 struct by_conn_event:composite_key<
   Subscription,
-  member<Subscription, WsServer::Connection*, &Subscription::conn>,
+  member<Subscription, WsConnection*, &Subscription::conn>,
   member<Subscription, string, &Subscription::event>
 >{};
 
@@ -59,7 +57,7 @@ typedef multi_index_container<
     // select by unique connection
     hashed_non_unique<
         tag<by_conn>,
-        member<Subscription, WsServer::Connection*, &Subscription::conn>
+        member<Subscription, WsConnection*, &Subscription::conn>
     >,
     // select by event
     hashed_non_unique<
@@ -71,7 +69,7 @@ typedef multi_index_container<
         tag<by_conn_event>,
         composite_key<
             Subscription,
-            member<Subscription, WsServer::Connection*, &Subscription::conn>,
+            member<Subscription, WsConnection*, &Subscription::conn>,
             member<Subscription, string, &Subscription::event>
         >
     >
@@ -89,9 +87,9 @@ auto&& subs_by_conn = subs.get<by_conn>();
 // api
 void add_endpoints (WsServer &server);
 void emit(string event, string data);
-void subscribe (WsServer::Connection* conn, string event);
-void unsubscribe (WsServer::Connection* conn, string event);
-void unsubscribe_all (WsServer::Connection* conn);
+void subscribe (WsConnection* conn, string event);
+void unsubscribe (WsConnection* conn, string event);
+void unsubscribe_all (WsConnection* conn);
 
 // ===== SERVER =====
 #ifdef BUILD_TESTING
@@ -107,7 +105,7 @@ void add_endpoints (WsServer &server) {
     auto &event_emitter = server.endpoint["^/events/?$"];
 
     event_emitter.on_close =
-    [](shared_ptr<WsServer::Connection> conn, int, const string &) {
+    [](shared_ptr<WsConnection> conn, int, const string &) {
         #ifdef BUILD_TESTING
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
@@ -116,7 +114,7 @@ void add_endpoints (WsServer &server) {
     };
 
     event_emitter.on_error =
-    [](shared_ptr<WsServer::Connection> conn, const error_code) {
+    [](shared_ptr<WsConnection> conn, const error_code) {
         #ifdef BUILD_TESTING
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
@@ -125,7 +123,7 @@ void add_endpoints (WsServer &server) {
     };
 
     event_emitter.on_message =
-    [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
+    [](shared_ptr<WsConnection> conn, shared_ptr<WsServer::InMessage> msg) {
         #ifdef BUILD_TESTING
         event_emitter_callback_count++;
         #endif // BUILD_TESTING
@@ -187,7 +185,7 @@ void add_endpoints (WsServer &server) {
     auto &grid = server.endpoint["^/grid/([0-9]+)/([0-9]+)/([a-zA-Z0-9_-]+)/?$"];
 
     grid.on_open =
-    [](shared_ptr<WsServer::Connection> conn) {
+    [](shared_ptr<WsConnection> conn) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_open" << endl;
         grid_callback_count++;
@@ -206,7 +204,7 @@ void add_endpoints (WsServer &server) {
     };
 
     grid.on_close =
-    [](shared_ptr<WsServer::Connection> conn, int, const string &) {
+    [](shared_ptr<WsConnection> conn, int, const string &) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_close" << endl;
         grid_callback_count++;
@@ -216,7 +214,7 @@ void add_endpoints (WsServer &server) {
     };
 
     grid.on_error =
-    [](shared_ptr<WsServer::Connection> conn, const error_code) {
+    [](shared_ptr<WsConnection> conn, const error_code) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_error" << endl;
         grid_callback_count++;
@@ -226,7 +224,7 @@ void add_endpoints (WsServer &server) {
     };
 
     grid.on_message =
-    [](shared_ptr<WsServer::Connection> conn, shared_ptr<WsServer::InMessage> msg) {
+    [](shared_ptr<WsConnection> conn, shared_ptr<WsServer::InMessage> msg) {
         #ifdef BUILD_TESTING
         COUT << "grid(" << conn->path_match[1] << '/' << conn->path_match[2] << '/' << conn->path_match[3] << ").on_message" << endl;
         grid_callback_count++;
@@ -239,7 +237,6 @@ void add_endpoints (WsServer &server) {
         // @Incomplete: do stuff with the grid msg
         auto data_str = msg->string();
         uint16_t* dd = (uint16_t*) data_str.data();
-        // COUT << "data.length:" << data_str.length() << endl;
 
         // accumulate the grid px (TODO)
         vector<Initialiser*> inits;
@@ -287,13 +284,12 @@ void emit(const string event, const string data) {
     }
 }
 
-void subscribe (WsServer::Connection* conn, const string event) {
+void subscribe (WsConnection* conn, const string event) {
     LockGuard lock(subs_mutex);
     subs.insert(Subscription(conn, event));
 }
 
-void unsubscribe (WsServer::Connection* conn, const string event) {
-    // auto&& subs_by_conn_event = subs.get<by_conn_event>(); // is this necessary to do every time? can this be cached?
+void unsubscribe (WsConnection* conn, const string event) {
     auto it = subs_by_conn_event.find(make_tuple(conn, event));
     if (it != subs_by_conn_event.end()) {
         LockGuard lock(subs_mutex);
@@ -301,8 +297,7 @@ void unsubscribe (WsServer::Connection* conn, const string event) {
     }
 }
 
-void unsubscribe_all (WsServer::Connection* conn) {
-    // auto&& subs_by_conn = subs.get<by_conn>(); // is this necessary to do every time? can this be cached?
+void unsubscribe_all (WsConnection* conn) {
     auto it = subs_by_conn.find(conn);
     if (it != subs_by_conn.end()) {
         LockGuard lock(subs_mutex);

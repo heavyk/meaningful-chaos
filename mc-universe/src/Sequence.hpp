@@ -13,17 +13,17 @@ using Mutex = SimpleWeb::Mutex;
 ### input data
 
 the grid px reresents the input to the sequence.
-for now it is a uint16_t[width][height],
+for now it is a u16[width][height],
 where width and height are both limited
-to be max uint16_t, but they could easily
+to be max u16, but they could easily
 be 24 or 32 bit sizes, and the value type
 could be a float or double.
 
 ### a memory address
 
 all "pointers" are relative to the "origin" and are defined as
-Offset{int16_t x, int16_t y} - relative modulo position
-Origin{uint16_t x, uint16_t y} - the absolute position
+Offset{s16 x, s16 y} - relative modulo position
+Origin{u16 x, u16 y} - the absolute position
 
 ### an operation
 
@@ -53,38 +53,38 @@ typedef struct Op2 Op2;
 typedef struct Op4 Op4;
 
 struct Op1 {
-    uint8_t size:2;
-    uint8_t op:6;
-    uint8_t from; // from which layer is the input to the data
-    uint8_t to; // output layer to the data
-    uint8_t __reserved__; // unused
+    u8 size:2;
+    u8 op:6;
+    u8 from; // from which layer is the input to the data
+    u8 to; // output layer to the data
+    u8 __reserved__; // unused
 };
 
 struct Op2 {
-    uint8_t size:2;
-    uint8_t op:6;
-    uint8_t from; // from which layer is the input to the data
-    uint8_t to; // output layer to the data
-    uint8_t __reserved__; // unused
+    u8 size:2;
+    u8 op:6;
+    u8 from; // from which layer is the input to the data
+    u8 to; // output layer to the data
+    u8 __reserved__; // unused
     Offset ptr; // intermediate address, if necessary
 };
 
 struct Op3 {
-    uint8_t size:2;
-    uint8_t op:6;
-    uint8_t from; // from which layer is the input to the data
-    uint8_t to; // output layer to the data
-    uint8_t __reserved__; // unused
+    u8 size:2;
+    u8 op:6;
+    u8 from; // from which layer is the input to the data
+    u8 to; // output layer to the data
+    u8 __reserved__; // unused
     Offset ptr1;
     Offset ptr2;
 };
 
 struct Op4 {
-    uint8_t size:2;
-    uint8_t op:6;
-    uint8_t from; // from which layer is the input to the data
-    uint8_t to; // output layer to the data
-    uint8_t __reserved__; // unused
+    u8 size:2;
+    u8 op:6;
+    u8 from; // from which layer is the input to the data
+    u8 to; // output layer to the data
+    u8 __reserved__; // unused
     Offset ptr1;
     Offset ptr2;
     Offset ptr3;
@@ -100,9 +100,9 @@ enum op_t {
 struct Output {
     float* vec;  // must be freed by the receiever of the output
     float** values; // must be freed by the receiever of the output
-    uint16_t dimensions;
+    u16 dimensions;
 
-    Output(Grid* grid, uint16_t num_layers) :
+    Output(Grid* grid, u16 num_layers) :
     dimensions(grid->_dimensions_) {
         vec = (number_t*) calloc(sizeof(number_t), dimensions);
         if (num_layers) values = (number_t**) calloc(sizeof(number_t) * grid->_width_ * grid->_height_, num_layers);
@@ -133,7 +133,7 @@ size_t get_pos (Offset& offset, Grid* grid) {
 
 
 struct Sequence : public enable_shared_from_this<Sequence> {
-    Sequence (shared_ptr<Grid> grid, uint16_t dimensions) noexcept :
+    Sequence (shared_ptr<Grid> grid, u16 dimensions) noexcept :
     _grid(grid), _dimensions(dimensions) {
         _num_opts = _max_opts = 0;
     }
@@ -151,7 +151,7 @@ struct Sequence : public enable_shared_from_this<Sequence> {
         UNUSED(init);
         UNUSED(pos);
         // LockGuard(write_mutex); // lock for the duration of this function
-        for (uint32_t i = 0; i < num_opts;) {
+        for (u32 i = 0; i < num_opts;) {
             const Op cur = ops[i];
 
             switch (cur.op) {
@@ -179,12 +179,12 @@ struct Sequence : public enable_shared_from_this<Sequence> {
 
     Mutex _write_mutex_;
 
-    uint32_t _num_opts_;
-    uint32_t _max_opts_;
+    u32 _num_opts_;
+    u32 _max_opts_;
     Op* _ops_;
 
-    uint16_t _dimensions_;
-    uint16_t _num_layers_;
+    u16 _dimensions_;
+    u16 _num_layers_;
 };
 
 

@@ -237,7 +237,7 @@ void add_endpoints (WsServer &server) {
 
         // @Incomplete: do stuff with the grid msg
         auto data_str = msg->string();
-        uint16_t* dd = (uint16_t*) data_str.data();
+        u16* dd = (u16*) data_str.data();
 
         // accumulate the grid px
         // @Optimise: use absil stack vector here instead and init them in stack space instead of thrashing the memory
@@ -264,7 +264,7 @@ void add_endpoints (WsServer &server) {
 
                 // @Incomplete: for each sequence, run them with this initial data.
                 //              for now, though just generate random values
-                const uint16_t dimensions = 20;
+                const u16 dimensions = 20;
                 // fill with random values:
                 float* query = (float*) calloc(sizeof(float), dimensions);
                 for (int i = 0; i < dimensions; i++) {
@@ -389,10 +389,10 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
         for (int i = 0; i < 20; i++) {
             // generate random bytes
             string bytes(len, 0);
-            uint16_t* px = (uint16_t*) bytes.data();
+            u16* px = (u16*) bytes.data();
             for (auto x = 0; x < width; x++) {
                 for (auto y = 0; y < height; y++) {
-                    px[y * width + x] = (uint16_t) random_number(0, 22);
+                    px[y * width + x] = (u16) random_number(0, 22);
                 }
             }
 

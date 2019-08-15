@@ -4,6 +4,15 @@
 #include <stdio.h>
 #include <string>
 
+typedef uint64_t u64;
+typedef int64_t s64;
+typedef uint32_t u32;
+typedef int32_t s32;
+typedef uint16_t u16;
+typedef int16_t s16;
+typedef uint8_t u8;
+typedef int8_t s8;
+
 using namespace std;
 
 #define UNUSED(V) ((void) V)
@@ -61,20 +70,20 @@ double random_number (double min = 0.0, double max = 1.0) {
 } */
 
 typedef float number_t;
-typedef uint16_t grid_t;
+typedef u16 grid_t;
 
 typedef struct Offset Offset;
 typedef struct Origin Origin;
 
 struct Offset {
-    int16_t x;
-    int16_t y;
+    s16 x;
+    s16 y;
 };
 
 struct Origin {
-    Origin (uint16_t _x, uint16_t _y) : x(_x), y(_y) {};
-    uint16_t x;
-    uint16_t y;
+    Origin (u16 _x, u16 _y) : x(_x), y(_y) {};
+    u16 x;
+    u16 y;
 };
 
 

@@ -1,19 +1,12 @@
-### convert simple websocket server project
-
-- write CMakeLists.txt for rax
-- include rax into mc-universe
-- rename examples -> mc-universe
-- include SimpleWebSocket-Server into mc-universe
-
 ### simple websocket server
 
 I'm abandoning the idea of running this as a redis command set. it's just too dificult to debug. instead, I'm just going to use websockets to connect to the client(s). it already uses threads, so I can do the queries in a threaded way, and lock for writes.
 
 https://github.com/eidheim/Simple-WebSocket-Server
 
-the main disadvantage of this is that now there is no data storage, so (maybe) I'll want to include some components of redis (like the rdb) and store it there. if I just use flat files, then it may not be necessary. the whole point is to simplify this.
+the main disadvantage of this is that now there is no data storage, so (maybe) I'll want to import some components of redis (like the rdb?) and store it there. if I just use flat files, then it may not be necessary. instead, I will be using boost multi_index for hash maps and boost serialization (https://www.boost.org/doc/libs/1_70_0/libs/serialization/doc/index.html) to serialise data to the disk. the whole point is to simplify this, and boost provides most of what I need to do it.
 
-instead of commands, it has different endpoints:
+so, instead of using redis commands, it has different endpoints which can be connected to. I wanted grid moments to have an unobstructed channel to be processed, such that large grids won't clog up the events pipeline and vice versa.
 
 #### /grid/:width/:height/:id
 
@@ -24,33 +17,24 @@ each message to this grid is an update frame. upon receipt, it'll accumulate the
 listen for events on this id. every time an event happens, a message will be sent to each client, along with any additional data.
 
 
-
-
-### redis module (c++ code)
-- essentials:
-  - mc.grid.create <grid_id> <width> <height>
-  - mc.grid.event <grid_id> <timestamp> <event>
-  - mc.grid.moment <grid_id> <timestamp> <data>
-    - adds the latest frame to be processed. can be accompanied with an event.
-    - if an event had occurred, then begin the process to search for a sequence
-    - run all sequences on the grid and fire any events found
-- add custom rax functions to have raxFreeWithCallback and raxHeapSize
-- use linear scan w/ inner product for searches. for a small universe, it should be fast enough
-- force dimensions to be divisible by 16
-- implement the tests instead with `catch` and just connect with hiredis (or ioredis)
-
 ### how the grid works
 
 when a grid receives a moment, it accumulates all of the values into its data, for all overflows, this is where a sequence will begin.
 
 the values grid + the overflow grid will then be processed, calling each sequence on it in the universe. each sequence is associated with an event_id
 
-### redis module developer
-- make a redis module watcher which executes some things when <path> has changed:
-  - `mc.tests` - returns a list of the tests
-- after reload, calls each checked test and logs the output
-- ability to see server log
 
+------------------------------------
+------------------------------------
+#           NEXT STEPS
+------------------------------------
+------------------------------------
+
+### mc-universe
+- move the tests out to their own cpp files, so that a header which includes another header does not include both of their tests
+- serialise the data using boost
+  - https://theboostcpplibraries.com/boost.serialization-archive
+  - https://www.boost.org/doc/libs/1_70_0/libs/serialization/doc/index.html
 
 ### render process
 - add tabs to hide/show the camera
@@ -87,8 +71,9 @@ the values grid + the overflow grid will then be processed, calling each sequenc
 - abseil-cpp: https://github.com/abseil/abseil-cpp/tree/master/CMake
   - stack traces
   - string join, split, substitute, cat, format, match, replace, etc.
+  - use cityhash for hash functions (if it's easy, cause it's not necessary)
+  - stack allocated vector for the vector results?
   - inlined_vector for the vector of inits
-- instead of unordered_multimap, maybe build a multikey version of rax, and use that (add another boolean bitfield which defines the entry as 'multi', meaning the next entry also has the same key)
 
 ### d-version?
 

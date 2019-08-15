@@ -9,22 +9,13 @@ if(NOT MSVC)
     endif()
 endif()
 
-# to fake out cmake, the test directory is made with symlinks from *.hpp -> *.cpp
-
-add_executable(Grid-test Grid.cpp)
-add_test(Grid-test Grid-test)
-target_link_libraries(Grid-test mc-core)
-target_link_libraries(Grid-test Catch2::Catch2)
-
-add_executable(WsServer-test WsServer.cpp)
-add_test(WsServer-test WsServer-test)
-target_link_libraries(WsServer-test mc-core)
-target_link_libraries(WsServer-test Catch2::Catch2)
-
-# add_executable(mc-universe-test mc-universe.cpp)
-# add_test(mc-universe-test mc-universe-test)
-# target_link_libraries(mc-universe-test Catch2::Catch2)
-# # add_dependencies(mc-universe-test mc-core)
-# # target_link_libraries(mc-universe-test mc-core)
-
-# TODO make this automatic, with a node script
+file(GLOB_RECURSE sources *.c *.cpp)
+foreach(src ${sources})
+    get_filename_component(name ${src} NAME_WE)
+    set(test "${name}-test")
+    message("test: ${test}, ${src}")
+    add_executable(${test} ${src})
+    add_test(${test} ${test})
+    target_link_libraries(${test} mc-core)
+    target_link_libraries(${test} Catch2::Catch2)
+endforeach(src sources)

@@ -60,4 +60,23 @@ double random_number (double min = 0.0, double max = 1.0) {
     }
 } */
 
+typedef float number_t;
+typedef uint16_t grid_t;
+
+typedef struct Offset Offset;
+typedef struct Origin Origin;
+
+struct Offset {
+    int16_t x;
+    int16_t y;
+};
+
+struct Origin {
+    Origin (uint16_t _x, uint16_t _y) : x(_x), y(_y) {};
+    uint16_t x;
+    uint16_t y;
+};
+
+
+
 #endif // __COMMON_HPP__

@@ -98,11 +98,11 @@ enum op_t {
 };
 
 struct Output {
-    float* vec;  // must be freed by the receiever of the output
-    float** values; // must be freed by the receiever of the output
+    float *vec;  // must be freed by the receiever of the output
+    float **values; // must be freed by the receiever of the output
     u16 dimensions;
 
-    Output(Grid* grid, u16 num_layers) :
+    Output(Grid *grid, u16 num_layers) :
     dimensions(grid->dimensions) {
         vec = (number_t*) calloc(sizeof(number_t), dimensions);
         if (num_layers) values = (number_t**) calloc(sizeof(number_t) * grid->width * grid->height, num_layers);
@@ -112,9 +112,9 @@ struct Output {
 };
 
 template<typename Offset>
-size_t get_offset (Offset& offset, Grid* grid) {
-    auto x = offset.x;
-    auto y = offset.y;
+size_t calc_idx (Offset *offset, Grid *grid) {
+    auto x = offset->x;
+    auto y = offset->y;
     auto w = grid->width;
     auto h = grid->height;
     while (x > w) x -= w;
@@ -140,14 +140,14 @@ struct Sequence : public enable_shared_from_this<Sequence> {
         free(ops);
     }
 
-    Output run (Initialiser& init) {
-        Grid* grid = this->grid.get();
+    Output run (Initialiser *init) {
+        Grid *grid = this->grid.get();
         Output out(grid, num_layers);
-        Origin pos = init.origin;
+        Origin *origin = &init->origin;
         // pos.width = g->width;
         // pos.height = g->height;
         UNUSED(init);
-        UNUSED(pos);
+        UNUSED(origin);
         // LockGuard(write_mutex); // lock for the duration of this function
         for (u32 i = 0; i < num_opts;) {
             const Op cur = ops[i];
@@ -156,7 +156,7 @@ struct Sequence : public enable_shared_from_this<Sequence> {
                 case add:
                     const Op2& op = (Op2&) cur;
                     // if (op.from == 0)
-                    auto offset = get_offset(pos, grid);
+                    auto idx = calc_idx(origin, grid);
 
 
             }

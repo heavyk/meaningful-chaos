@@ -32,7 +32,7 @@ struct Grid : public std::enable_shared_from_this<Grid> {
         free(px);
     }
 
-    void accumulate (u16* dd, vector<Initialiser*> &inits) {
+    void accumulate (u16 *dd, vector<Initialiser*> &inits) {
         // @Incomplete: lock the grid while writing to it
         for (auto y = 0; y < height; y++) {
             auto offset = y * width;
@@ -67,8 +67,8 @@ struct Grid : public std::enable_shared_from_this<Grid> {
 #ifdef BUILD_TESTING
 
 TEST_CASE("Grid accumulates properly", "[grid]" ) {
-    Grid* grid = new Grid("lala", 8, 8);
-    vector<Initialiser*> inits;
+    Grid *grid = new Grid("lala", 8, 8);
+    vector<Initialiser *> inits;
     u16 px[8][8] = {{0}};
 
     // set a few contrived values

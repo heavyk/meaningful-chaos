@@ -32,10 +32,10 @@ using Mutex = SimpleWeb::Mutex;
 std::unordered_map<shared_ptr<WsConnection>, shared_ptr<Grid>> connection_grid;
 
 struct Subscription {
-    WsConnection* conn;
+    WsConnection *conn;
     string event;
 
-    Subscription (WsConnection* _conn, string _event) : conn(_conn), event(_event) {};
+    Subscription (WsConnection *_conn, string _event) : conn(_conn), event(_event) {};
 
     friend std::ostream& operator<<(std::ostream& os, const Subscription& s) {
         os << "Sub(" << s.conn << " -> " << s.event << ")" << endl;
@@ -87,9 +87,9 @@ auto&& subs_by_conn = subs.get<by_conn>();
 // api
 void add_endpoints (WsServer &server);
 void emit(string event, string data);
-void subscribe (WsConnection* conn, string event);
-void unsubscribe (WsConnection* conn, string event);
-void unsubscribe_all (WsConnection* conn);
+void subscribe (WsConnection *conn, string event);
+void unsubscribe (WsConnection *conn, string event);
+void unsubscribe_all (WsConnection *conn);
 
 // ===== SERVER =====
 #ifdef BUILD_TESTING
@@ -237,20 +237,20 @@ void add_endpoints (WsServer &server) {
 
         // @Incomplete: do stuff with the grid msg
         auto data_str = msg->string();
-        u16* dd = (u16*) data_str.data();
+        u16 *dd = (u16 *) data_str.data();
 
         // accumulate the grid px
         // @Optimise: use absil stack vector here instead and init them in stack space instead of thrashing the memory
-        vector<Initialiser*> inits;
+        vector<Initialiser *> inits;
         grid->accumulate(dd, inits);
 
         if (inits.size() > 0) {
             // run all sequences on every overflow value (TODO)
             string event = "init:grid/" + (string)conn->path_match[1] + '/' + (string)conn->path_match[2] + '/' + (string)conn->path_match[3];
-            for (auto i = inits.begin(); i != inits.end(); i++) {
+            for (auto _i = inits.begin(); _i != inits.end(); _i++) {
                 StringBuffer s;
                 Writer<StringBuffer> j(s);
-                auto init = *i;
+                Initialiser *init = *_i;
 
                 j.StartObject();
                 j.Key("x");
@@ -267,14 +267,14 @@ void add_endpoints (WsServer &server) {
                 //              for now, though just generate random values
                 const u16 dimensions = 20;
                 // fill with random values:
-                float* query = (float*) calloc(sizeof(float), dimensions);
+                float *query = (float *) calloc(sizeof(float), dimensions);
                 for (int i = 0; i < dimensions; i++) {
                     query[i] = random_number(-1000, 1000);
                 }
 
                 // @Inocomplete: query the universe for the value using inner product distance function.
 
-                delete *i;
+                delete *_i;
             }
 
             // query the universe for nearest points to those values (TODO)
@@ -296,12 +296,12 @@ void emit(const string event, const string data) {
     }
 }
 
-void subscribe (WsConnection* conn, const string event) {
+void subscribe (WsConnection *conn, const string event) {
     LockGuard lock(subs_mutex);
     subs.insert(Subscription(conn, event));
 }
 
-void unsubscribe (WsConnection* conn, const string event) {
+void unsubscribe (WsConnection *conn, const string event) {
     auto it = subs_by_conn_event.find(make_tuple(conn, event));
     if (it != subs_by_conn_event.end()) {
         LockGuard lock(subs_mutex);
@@ -309,7 +309,7 @@ void unsubscribe (WsConnection* conn, const string event) {
     }
 }
 
-void unsubscribe_all (WsConnection* conn) {
+void unsubscribe_all (WsConnection *conn) {
     auto it = subs_by_conn.find(conn);
     if (it != subs_by_conn.end()) {
         LockGuard lock(subs_mutex);
@@ -390,7 +390,7 @@ TEST_CASE("server manipulates an 8x8 grid", "[server][grid]") {
         for (int i = 0; i < 20; i++) {
             // generate random bytes
             string bytes(len, 0);
-            u16* px = (u16*) bytes.data();
+            u16 *px = (u16 *) bytes.data();
             for (auto x = 0; x < width; x++) {
                 for (auto y = 0; y < height; y++) {
                     px[y * width + x] = (u16) random_number(0, 22);

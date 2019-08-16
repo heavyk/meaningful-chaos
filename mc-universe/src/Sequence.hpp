@@ -103,20 +103,20 @@ struct Output {
     u16 dimensions;
 
     Output(Grid* grid, u16 num_layers) :
-    dimensions(grid->_dimensions_) {
+    dimensions(grid->dimensions) {
         vec = (number_t*) calloc(sizeof(number_t), dimensions);
-        if (num_layers) values = (number_t**) calloc(sizeof(number_t) * grid->_width_ * grid->_height_, num_layers);
+        if (num_layers) values = (number_t**) calloc(sizeof(number_t) * grid->width * grid->height, num_layers);
     };
 
     ~Output() { free(vec); free(values); };
 };
 
 template<typename Offset>
-size_t get_pos (Offset& offset, Grid* grid) {
+size_t get_offset (Offset& offset, Grid* grid) {
     auto x = offset.x;
     auto y = offset.y;
-    auto w = grid->w;
-    auto h = grid->h;
+    auto w = grid->width;
+    auto h = grid->height;
     while (x > w) x -= w;
     while (x < 0) x += w;
     while (y > h) y -= h;
@@ -134,20 +134,18 @@ size_t get_pos (Offset& offset, Grid* grid) {
 
 struct Sequence : public enable_shared_from_this<Sequence> {
     Sequence (shared_ptr<Grid> grid, u16 dimensions) noexcept :
-    _grid(grid), _dimensions(dimensions) {
-        _num_opts = _max_opts = 0;
-    }
+    grid(grid), dimensions(dimensions) {}
 
     ~Sequence () {
-        free(_ops);
+        free(ops);
     }
 
     Output run (Initialiser& init) {
-        Grid* grid = _grid.get();
+        Grid* grid = this->grid.get();
         Output out(grid, num_layers);
         Origin pos = init.origin;
-        // pos.width = grid.width;
-        // pos.height = grid.height;
+        // pos.width = g->width;
+        // pos.height = g->height;
         UNUSED(init);
         UNUSED(pos);
         // LockGuard(write_mutex); // lock for the duration of this function
@@ -175,16 +173,16 @@ struct Sequence : public enable_shared_from_this<Sequence> {
         return out;
     }
 
-    shared_ptr<Grid> _grid_;
+    shared_ptr<Grid> grid;
 
-    Mutex _write_mutex_;
+    Mutex write_mutex;
 
-    u32 _num_opts_;
-    u32 _max_opts_;
-    Op* _ops_;
+    u32 num_opts = 0;
+    u32 max_opts = 0;
+    Op* ops;
 
-    u16 _dimensions_;
-    u16 _num_layers_;
+    u16 dimensions;
+    u16 num_layers;
 };
 
 

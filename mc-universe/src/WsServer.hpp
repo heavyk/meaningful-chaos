@@ -247,17 +247,18 @@ void add_endpoints (WsServer &server) {
         if (inits.size() > 0) {
             // run all sequences on every overflow value (TODO)
             string event = "init:grid/" + (string)conn->path_match[1] + '/' + (string)conn->path_match[2] + '/' + (string)conn->path_match[3];
-            for (auto init = inits.begin(); init != inits.end(); init++) {
+            for (auto i = inits.begin(); i != inits.end(); i++) {
                 StringBuffer s;
                 Writer<StringBuffer> j(s);
+                auto init = *i;
 
                 j.StartObject();
                 j.Key("x");
-                j.Double((*init)->x);
+                j.Double(init->origin.x);
                 j.Key("y");
-                j.Double((*init)->y);
+                j.Double(init->origin.y);
                 j.Key("v");
-                j.Double((*init)->value);
+                j.Double(init->value);
                 j.EndObject();
 
                 emit(event, s.GetString());
@@ -273,7 +274,7 @@ void add_endpoints (WsServer &server) {
 
                 // @Inocomplete: query the universe for the value using inner product distance function.
 
-                delete *init;
+                delete *i;
             }
 
             // query the universe for nearest points to those values (TODO)

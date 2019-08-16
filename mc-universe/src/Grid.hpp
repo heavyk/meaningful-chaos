@@ -9,11 +9,9 @@
 #include <vector>
 
 struct Initialiser {
-    Initialiser (u16 _x, u16 _y, u32 _value) :
-    origin(_x, _y), value(_value) {};
+    Initialiser (u16 x, u16 y, u32 value) :
+    origin(Origin(x, y)), value(value) {}
 
-    // u16 x;
-    // u16 y;
     Origin origin;
     u32 value;
 };
@@ -21,11 +19,13 @@ struct Initialiser {
 // @Incomplete: grids need to be reference conunted, because it sounds like more than one connection can listen to the same grid.
 // @Incomplete: grids should also be serialised/unserialised on open/close
 struct Grid : public std::enable_shared_from_this<Grid> {
-    Grid (string id, int width, int height, u16 dimensions = 64) noexcept :
-    w(width), h(height), _dimensions(dimensions) {
-        px = (grid_t *) calloc(sizeof(grid_t), width * height);
-        id = _id;
-        cutoff = 255;
+    Grid (string id, int width, int height, u16 dimensions = 64) {
+        this->width = width;
+        this->height = height;
+        this->dimensions = dimensions;
+        this->px = static_cast<grid_t *>(calloc(sizeof(grid_t), width * height));
+        this->id = id;
+        this->cutoff = 255;
     }
 
     ~Grid () {
@@ -34,7 +34,7 @@ struct Grid : public std::enable_shared_from_this<Grid> {
 
     void accumulate (u16* dd, vector<Initialiser*> &inits) {
         // @Incomplete: lock the grid while writing to it
-        for (int y = 0; y < height; y++) {
+        for (auto y = 0; y < height; y++) {
             auto offset = y * width;
             for (int x = 0; x < width; x++) {
                 u32 value = px[offset + x];
@@ -55,12 +55,12 @@ struct Grid : public std::enable_shared_from_this<Grid> {
 
     }
 
-    u16 _width, _height;
-    u16 _dimensions;
-    u16 _cutoff;
-    string _id;
+    u16 width, height;
+    u16 dimensions;
+    u16 cutoff;
+    string id;
 
-    grid_t* _px;
+    grid_t* px;
 };
 
 
@@ -76,13 +76,13 @@ TEST_CASE("Grid accumulates properly", "[grid]" ) {
     px[1][2] = 129;
 
     grid->accumulate(*px, inits);
-    REQUIRE(*(grid->_px_+0)+0 == 65);
-    REQUIRE(*(grid->_px_+(1*8)+2) == 129);
+    REQUIRE(*(grid->px+0)+0 == 65);
+    REQUIRE(*(grid->px+(1*8)+2) == 129);
     REQUIRE(inits.size() == 0);
 
     grid->accumulate(*px, inits);
-    REQUIRE(*(grid->_px_+0)+0 == 130);
-    REQUIRE(*(grid->_px_+(1*8)+2) == 0);
+    REQUIRE(*(grid->px+0)+0 == 130);
+    REQUIRE(*(grid->px+(1*8)+2) == 0);
     REQUIRE(inits.size() == 1);
     REQUIRE(inits[0]->value == 258);
 }

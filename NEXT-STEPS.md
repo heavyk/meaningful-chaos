@@ -24,6 +24,10 @@ when a grid receives a moment, it accumulates all of the values into its data, f
 the values grid + the overflow grid will then be processed, calling each sequence on it in the universe. each sequence is associated with an event_id
 
 
+### the important takeaway
+
+the bytecode bit is the future for generating meaningful outputs. the present is to neural net the events to recognise them and then generate actions from it.
+
 ------------------------------------
 ------------------------------------
 #           NEXT STEPS
